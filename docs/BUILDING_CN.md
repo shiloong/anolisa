@@ -39,27 +39,33 @@ anolisa/
 
 ## 快速开始
 
-使用统一构建脚本：
+统一构建脚本可自动完成依赖安装、构建和系统安装。
 
 ```bash
 git clone https://github.com/alibaba/anolisa.git
 cd anolisa
+```
 
-# 安装依赖 + 构建 + 安装到系统（推荐）
+克隆完成后，根据需求**选择一个**命令执行即可：
+
+```bash
+# 方式一：安装依赖 + 构建 + 安装到系统（推荐大多数用户使用）
 ./scripts/build-all.sh --install-deps --install
 
-# 安装依赖 + 仅构建（不安装到系统）
+# 方式二：安装依赖 + 仅构建（不安装到系统）
 ./scripts/build-all.sh --install-deps
 
-# 仅安装依赖
+# 方式三：仅安装依赖（适用于 CI 或手动构建场景）
 ./scripts/build-all.sh --deps-only
 
-# 仅构建指定组件
+# 方式四：仅构建指定组件
 ./scripts/build-all.sh --install-deps --component cosh --component sec-core
 
-# 包含可选的 agentsight
+# 方式五：包含可选的 agentsight
 ./scripts/build-all.sh --install-deps --install --component cosh --component skills --component sec-core --component sight
 ```
+
+> **提示：** 以上每个方式都是独立的命令，根据自己的需求选择一个执行即可。如果使用了统一构建脚本，可以跳过下方的[分组件构建](#分组件构建)部分。
 
 ### 脚本选项
 
@@ -82,7 +88,9 @@ cd anolisa
 
 ## 分组件构建
 
-如果你希望手动设置各工具链并逐个构建组件，而非使用统一构建脚本，请按以下四个步骤操作。
+> **如果已使用上方的统一构建脚本，可以跳过本节。** 脚本会自动完成依赖安装、构建和系统安装的所有步骤。
+
+如果你希望手动设置各工具链并逐个构建组件，请按以下四个步骤操作。
 
 ### 步骤一：安装依赖
 

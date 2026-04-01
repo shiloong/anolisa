@@ -39,27 +39,33 @@ anolisa/
 
 ## Quick Start
 
-Use the unified script (to be added by you):
+The unified build script handles dependency installation, building, and system installation automatically.
 
 ```bash
 git clone https://github.com/alibaba/anolisa.git
 cd anolisa
+```
 
-# Install dependencies + build + install to system (recommended)
+Then **pick one** of the following commands based on your needs:
+
+```bash
+# Option 1: Install deps + build + install to system (recommended for most users)
 ./scripts/build-all.sh --install-deps --install
 
-# Install dependencies + build only (without system install)
+# Option 2: Install deps + build only (without system install)
 ./scripts/build-all.sh --install-deps
 
-# Install dependencies only
+# Option 3: Install deps only (useful for CI or manual builds)
 ./scripts/build-all.sh --deps-only
 
-# Build selected components only
+# Option 4: Build selected components only
 ./scripts/build-all.sh --install-deps --component cosh --component sec-core
 
-# Include optional agentsight
+# Option 5: Include optional agentsight
 ./scripts/build-all.sh --install-deps --install --component cosh --component skills --component sec-core --component sight
 ```
+
+> **Tip:** Each option above is a standalone command — just pick the one that fits your use case. If you use the unified script, you can skip the [Component-by-Component Build](#component-by-component-build) section below entirely.
 
 ### Script Options
 
@@ -82,7 +88,9 @@ cd anolisa
 
 ## Component-by-Component Build
 
-If you prefer to set up each toolchain and build each component manually instead of using the unified script, follow the four steps below.
+> **You can skip this section** if you already used the unified build script above. The script handles all dependency installation, building, and system installation automatically.
+
+If you prefer to set up each toolchain and build each component manually, follow the four steps below.
 
 ### Step 1: Install Dependencies
 

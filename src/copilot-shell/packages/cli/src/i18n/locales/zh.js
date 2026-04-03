@@ -1281,10 +1281,4 @@ export default {
   'Press Ctrl+C to exit, then type exit to return to the original session.':
     '按 Ctrl+C 退出，然后输入 exit 返回原始会话。',
   'Press Enter to start a new session.': '按 Enter 启动新会话。',
-  // OpenClaw 配置复用
-  'OpenClaw configuration detected': '检测到 OpenClaw 配置',
-  'The following configuration from OpenClaw will be imported':
-    '将导入以下来自 OpenClaw 的配置',
-  'Press Y to authorize import, N to configure manually':
-    '按 Y 授权导入，按 N 手动配置',
 };

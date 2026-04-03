@@ -18,7 +18,6 @@ import { SettingsDialog } from './SettingsDialog.js';
 import { QwenOAuthProgress } from './QwenOAuthProgress.js';
 import { AuthDialog } from '../auth/AuthDialog.js';
 import { OpenAIKeyPrompt } from './OpenAIKeyPrompt.js';
-import { OpenClawImportPrompt } from './OpenClawImportPrompt.js';
 import { AliyunKeyPrompt } from './AliyunKeyPrompt.js';
 import { EditorSettingsDialog } from './EditorSettingsDialog.js';
 import { PermissionsModifyTrustDialog } from './PermissionsModifyTrustDialog.js';
@@ -40,7 +39,6 @@ import { ModelSwitchDialog } from './ModelSwitchDialog.js';
 import { AgentCreationWizard } from './subagents/create/AgentCreationWizard.js';
 import { AgentsManagerDialog } from './subagents/manage/AgentsManagerDialog.js';
 import { SessionPicker } from './SessionPicker.js';
-import { readOpenClawConfig } from '../../utils/openclawConfig.js';
 
 interface DialogManagerProps {
   addItem: UseHistoryManagerReturn['addItem'];
@@ -115,16 +113,6 @@ export const DialogManager = ({
         '',
     };
   };
-
-  // 是否用户已拒绝忽略 OpenClaw 导入（当前认证流程内有效）
-  const [openclawDeclined, setOpenclawDeclined] = useState(false);
-
-  // 当 isAuthenticating 结束时重置拒绝状态，下次进入认证流程再次提示
-  useEffect(() => {
-    if (!uiState.isAuthenticating) {
-      setOpenclawDeclined(false);
-    }
-  }, [uiState.isAuthenticating]);
 
   if (uiState.showWelcomeBackDialog && uiState.welcomeBackInfo?.hasHistory) {
     return (
@@ -303,25 +291,6 @@ export const DialogManager = ({
   }
 
   if (uiState.isAuthDialogOpen || uiState.authError) {
-    // 在 AuthDialog 选择页之前，先检测是否有 OpenClaw 配置可复用
-    const defaults = getDefaultOpenAIConfig();
-    const openclawConfig = !defaults.apiKey ? readOpenClawConfig() : null;
-    if (openclawConfig && !openclawDeclined) {
-      return (
-        <OpenClawImportPrompt
-          openclawConfig={openclawConfig}
-          onAccept={(cfg) => {
-            uiActions.handleAuthSelect(AuthType.USE_OPENAI, {
-              apiKey: cfg.apiKey,
-              baseUrl: cfg.baseUrl,
-              model: cfg.model,
-            });
-          }}
-          onDecline={() => setOpenclawDeclined(true)}
-        />
-      );
-    }
-
     return (
       <Box flexDirection="column">
         <AuthDialog />

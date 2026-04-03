@@ -1446,10 +1446,4 @@ export default {
   'Press Ctrl+C to exit, then type exit to return to the original session.':
     'Press Ctrl+C to exit, then type exit to return to the original session.',
   'Press Enter to start a new session.': 'Press Enter to start a new session.',
-  // OpenClaw configuration reuse
-  'OpenClaw configuration detected': 'OpenClaw configuration detected',
-  'The following configuration from OpenClaw will be imported':
-    'The following configuration from OpenClaw will be imported',
-  'Press Y to authorize import, N to configure manually':
-    'Press Y to authorize import, N to configure manually',
 };

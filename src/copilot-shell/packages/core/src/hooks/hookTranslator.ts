@@ -158,6 +158,9 @@ export class HookTranslatorImpl {
     // Safely extract generation config
     const config = extractGenerationConfig(sdkRequest);
 
+    // Extract tools from config if present
+    const tools = config?.['tools'];
+
     return {
       model: sdkRequest.model || '',
       messages,
@@ -171,6 +174,8 @@ export class HookTranslatorImpl {
             candidateCount: config['candidateCount'] as number | undefined,
             presencePenalty: config['presencePenalty'] as number | undefined,
             frequencyPenalty: config['frequencyPenalty'] as number | undefined,
+            // Include tools in the config
+            tools,
           }
         : undefined,
     };

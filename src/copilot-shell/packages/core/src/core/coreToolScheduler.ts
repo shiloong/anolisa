@@ -1327,11 +1327,36 @@ export class CoreToolScheduler {
               const hookSystem = this.config.getHookSystem();
               if (hookSystem) {
                 try {
+                  // Convert content to string for hook input
+                  // content can be string or PartListUnion (array of parts)
+                  let contentForHook: string;
+                  if (typeof content === 'string') {
+                    contentForHook = content;
+                  } else if (Array.isArray(content)) {
+                    // Extract text from PartListUnion array
+                    contentForHook = content
+                      .map((part: unknown) => {
+                        if (typeof part === 'string') return part;
+                        if (
+                          part &&
+                          typeof part === 'object' &&
+                          'text' in part &&
+                          typeof (part as { text?: unknown }).text === 'string'
+                        ) {
+                          return (part as { text: string }).text;
+                        }
+                        return '';
+                      })
+                      .join('');
+                  } else {
+                    contentForHook = '';
+                  }
+
                   const postToolOutput = await hookSystem.firePostToolUseEvent(
                     toolName,
                     scheduledCall.request.args,
                     {
-                      llmContent: typeof content === 'string' ? content : '',
+                      llmContent: contentForHook,
                       returnDisplay:
                         typeof toolResult.returnDisplay === 'string'
                           ? toolResult.returnDisplay

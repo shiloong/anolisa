@@ -2,7 +2,8 @@
 
 ## 1. 环境准备
 
-- 使用 [uv](https://docs.astral.sh/uv/) 管理 Python 依赖和虚拟环境
+- **Python 版本：固定使用 3.11.6**（通过 `.python-version` 和 `pyproject.toml` 双重约束，不支持 3.10 及以下或 3.12 及以上）
+- 使用 [uv](https://docs.astral.sh/uv/) 管理 Python 依赖和虚拟环境，uv 会自动读取 `.python-version` 选择正确版本
 - `cd agent-sec-cli && uv sync` 安装所有依赖（含 dev group）
 - `uv.lock` 必须纳入版本控制，确保 CI 和本地环境一致
 
@@ -36,6 +37,7 @@
 
 - 所有函数/方法必须标注参数类型和返回类型
 - Python >= 3.10 原生支持 `dict[str, Any]`、`str | None` 等语法，无需 `from __future__ import annotations`
+- 当前项目固定使用 Python 3.11.x，避免 3.12 引入的 breaking changes（`distutils` 移除、f-string 语法变更等）
 
 ## 5. Backend 接口规范
 

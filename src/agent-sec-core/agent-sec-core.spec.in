@@ -24,7 +24,8 @@ BuildRequires:  python3-pip
 
 # Runtime dependencies
 # asset-verify
-Requires:       python3 >= 3.6
+Requires:       python3 >= 3.11
+Requires:       python3 < 3.12
 Requires:       gnupg2 >= 2.0
 Requires:       jq
 Recommends:     python3-pgpy >= 0.5

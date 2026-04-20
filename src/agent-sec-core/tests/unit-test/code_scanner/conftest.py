@@ -941,6 +941,105 @@ PY_WEAK_CRYPTO_CASES = [
     ("hashlib.md5(data)", Language.PYTHON, "py-weak-crypto", 0),
 ]
 
+SHELL_OBFUSCATION_CASES = [
+    # === True Positives ===
+    (
+        'echo "cHJpbnQoJ2hlbGxvJyk=" | base64 -d | bash',
+        Language.BASH,
+        "shell-obfuscation",
+        1,
+    ),
+    ("base64 --decode payload.txt | sh", Language.BASH, "shell-obfuscation", 1),
+    ("cat encoded.txt | base64 -d | sudo bash", Language.BASH, "shell-obfuscation", 1),
+    ("base64 -d <<< $PAYLOAD | zsh", Language.BASH, "shell-obfuscation", 1),
+    (
+        'xxd -r -p <<< "6563686f2068656c6c6f" | sh',
+        Language.BASH,
+        "shell-obfuscation",
+        1,
+    ),
+    ("xxd -rp input.hex | bash", Language.BASH, "shell-obfuscation", 1),
+    ("printf '\\x69\\x64' | sh", Language.BASH, "shell-obfuscation", 1),
+    ("printf '\\x63\\x75\\x72\\x6c' | bash", Language.BASH, "shell-obfuscation", 1),
+    # === True Negatives ===
+    ("base64 -d file.b64 > output.bin", Language.BASH, "shell-obfuscation", 0),
+    ('echo "hello" | base64', Language.BASH, "shell-obfuscation", 0),
+    ("cat file | xxd", Language.BASH, "shell-obfuscation", 0),
+    ("base64 -d archive.tar.gz.b64 | tar xz", Language.BASH, "shell-obfuscation", 0),
+    ("xxd -r -p input.hex > output.bin", Language.BASH, "shell-obfuscation", 0),
+    ("printf '%s' hello", Language.BASH, "shell-obfuscation", 0),
+]
+
+SHELL_DANGEROUS_PERMISSION_CASES = [
+    # === True Positives ===
+    ("chmod 777 /opt/app/config", Language.BASH, "shell-dangerous-permission", 1),
+    ("chmod 666 database.db", Language.BASH, "shell-dangerous-permission", 1),
+    ("chmod 776 /tmp/shared", Language.BASH, "shell-dangerous-permission", 1),
+    ("chmod u+s /usr/local/bin/helper", Language.BASH, "shell-dangerous-permission", 1),
+    ("chmod g+s /usr/local/bin/tool", Language.BASH, "shell-dangerous-permission", 1),
+    ("chmod +s /usr/local/bin/app", Language.BASH, "shell-dangerous-permission", 1),
+    (
+        "chmod 4755 /usr/local/bin/helper",
+        Language.BASH,
+        "shell-dangerous-permission",
+        1,
+    ),
+    ("chmod 2755 /usr/local/bin/tool", Language.BASH, "shell-dangerous-permission", 1),
+    ("chmod 6755 /usr/local/bin/suid", Language.BASH, "shell-dangerous-permission", 1),
+    # === True Negatives ===
+    ("chmod 755 script.sh", Language.BASH, "shell-dangerous-permission", 0),
+    ("chmod 644 config.yaml", Language.BASH, "shell-dangerous-permission", 0),
+    ("chmod +x deploy.sh", Language.BASH, "shell-dangerous-permission", 0),
+    ("chmod 700 ~/.ssh", Language.BASH, "shell-dangerous-permission", 0),
+    ("chmod 600 ~/.ssh/id_rsa", Language.BASH, "shell-dangerous-permission", 0),
+    ("chown appuser:appgroup /opt/app", Language.BASH, "shell-dangerous-permission", 0),
+]
+
+PY_OBFUSCATION_CASES = [
+    # === True Positives ===
+    (
+        'exec(base64.b64decode("cHJpbnQoJ2hlbGxvJyk="))',
+        Language.PYTHON,
+        "py-obfuscation",
+        1,
+    ),
+    ("eval(base64.b64decode(encoded_str))", Language.PYTHON, "py-obfuscation", 1),
+    ("exec(b64decode(payload))", Language.PYTHON, "py-obfuscation", 1),
+    (
+        'eval(codecs.decode("vzcbeg bf", "rot_13"))',
+        Language.PYTHON,
+        "py-obfuscation",
+        1,
+    ),
+    ('exec(codecs.decode(hidden, "rot_13"))', Language.PYTHON, "py-obfuscation", 1),
+    (
+        'exec(bytes.fromhex("7072696e7428276869272900").decode())',
+        Language.PYTHON,
+        "py-obfuscation",
+        1,
+    ),
+    ("eval(bytes.fromhex(hex_payload).decode())", Language.PYTHON, "py-obfuscation", 1),
+    (
+        'exec(compile(base64.b64decode(encoded), "<string>", "exec"))',
+        Language.PYTHON,
+        "py-obfuscation",
+        1,
+    ),
+    (
+        'exec(compile(codecs.decode(src, "rot_13"), "<x>", "exec"))',
+        Language.PYTHON,
+        "py-obfuscation",
+        1,
+    ),
+    # === True Negatives ===
+    ("data = base64.b64decode(input_str)", Language.PYTHON, "py-obfuscation", 0),
+    ('result = codecs.decode(text, "utf-8")', Language.PYTHON, "py-obfuscation", 0),
+    ("content = bytes.fromhex(hex_str)", Language.PYTHON, "py-obfuscation", 0),
+    ("decoded = b64decode(token)", Language.PYTHON, "py-obfuscation", 0),
+    ('compile(source, "<string>", "exec")', Language.PYTHON, "py-obfuscation", 0),
+    ("exec(open('script.py').read())", Language.PYTHON, "py-obfuscation", 0),
+]
+
 # =====================================================================
 # Language-level aggregation
 # =====================================================================

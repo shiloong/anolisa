@@ -218,6 +218,7 @@ build_agent_sec_core() {
     cp -rp "${SEC_DIR}/cosh_hooks/"* "$pkg_dir/cosh_hooks/"
     cp -p "${SEC_DIR}/scripts/agent-sec-cli-wrapper.sh" "$pkg_dir/scripts/"
     cp "${SEC_DIR}/Makefile" "$pkg_dir/"
+    [ -f "${SEC_DIR}/LICENSE" ] && cp "${SEC_DIR}/LICENSE" "$pkg_dir/"
     [ -f "${SEC_DIR}/README.md" ] && cp "${SEC_DIR}/README.md" "$pkg_dir/"
 
     # openclaw-plugin (exclude node_modules and dev artifacts)

@@ -73,6 +73,7 @@ Built with maturin as a Rust native Python extension.
 %defattr(0644,root,root,0755)
 %attr(0755,root,root) /usr/bin/agent-sec-cli
 /opt/agent-sec/lib/python3.11/site-packages/*
+%license LICENSE
 
 # =============================================================================
 # Subpackage 2: agent-sec-cosh-hook
@@ -93,6 +94,7 @@ The linux-sandbox binary provides secure sandboxed execution environments.
 %attr(0755,root,root) /usr/local/bin/linux-sandbox
 %attr(0755,root,root) /usr/share/anolisa/extensions/*.py
 /usr/share/anolisa/extensions/
+%license LICENSE
 
 # =============================================================================
 # Subpackage 3: agent-sec-openclaw-hook
@@ -110,6 +112,7 @@ Hooks into OpenClaw to perform code scanning before tool execution.
 %defattr(0644,root,root,0755)
 %attr(0755,root,root) /opt/agent-sec/openclaw-plugin/scripts/deploy.sh
 /opt/agent-sec/openclaw-plugin/
+%license LICENSE
 
 # =============================================================================
 # Subpackage 4: agent-sec-skills
@@ -125,11 +128,13 @@ Includes agent-sec-core and code-scanner skill definitions.
 %files -n agent-sec-skills
 %defattr(0644,root,root,0755)
 %{_datadir}/anolisa/skills/
+%license LICENSE
 
 # =============================================================================
 # Main package has no files (metapackage)
 # =============================================================================
 %files
+%license LICENSE
 
 # =============================================================================
 # Build & Install

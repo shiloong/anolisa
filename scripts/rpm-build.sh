@@ -209,13 +209,14 @@ build_agent_sec_core() {
     local tmp_dir
     tmp_dir=$(mktemp -d)
     local pkg_dir="${tmp_dir}/${pkg_name}-${version}"
-    mkdir -p "$pkg_dir"/{skills,linux-sandbox,agent-sec-cli,cosh_hooks,openclaw-plugin}
+    mkdir -p "$pkg_dir"/{skills,linux-sandbox,agent-sec-cli,cosh_hooks,openclaw-plugin,scripts}
 
     # skills: use cp -rp dir/. to include hidden files/directories
     cp -rp "${SEC_DIR}/skills/." "$pkg_dir/skills/"
     cp -rp "${SEC_DIR}/linux-sandbox/"* "$pkg_dir/linux-sandbox/"
     rm -f "$pkg_dir/linux-sandbox/rust-toolchain.toml"
     cp -rp "${SEC_DIR}/cosh_hooks/"* "$pkg_dir/cosh_hooks/"
+    cp -p "${SEC_DIR}/scripts/agent-sec-cli-wrapper.sh" "$pkg_dir/scripts/"
     cp "${SEC_DIR}/Makefile" "$pkg_dir/"
     [ -f "${SEC_DIR}/README.md" ] && cp "${SEC_DIR}/README.md" "$pkg_dir/"
 

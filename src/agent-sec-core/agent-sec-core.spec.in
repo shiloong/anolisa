@@ -22,8 +22,8 @@
 # These must NOT become hard RPM Requires/Provides.
 # Using path-based exclusion instead of AutoReqProv:no so that other subpackages
 # (e.g. linux-sandbox in agent-sec-cosh-hook) retain proper auto-dependency detection.
-%global __requires_exclude_from %{_libdir}/python3\.11/site-packages/.*
-%global __provides_exclude_from %{_libdir}/python3\.11/site-packages/.*
+%global __requires_exclude_from /opt/agent-sec/lib/python3\.11/site-packages/.*
+%global __provides_exclude_from /opt/agent-sec/lib/python3\.11/site-packages/.*
 
 Name:           agent-sec-core
 Version:        @VERSION@
@@ -72,7 +72,7 @@ Built with maturin as a Rust native Python extension.
 %files -n agent-sec-cli
 %defattr(0644,root,root,0755)
 %attr(0755,root,root) /usr/bin/agent-sec-cli
-/usr/lib64/python3.11/site-packages/*
+/opt/agent-sec/lib/python3.11/site-packages/*
 
 # =============================================================================
 # Subpackage 2: agent-sec-cosh-hook

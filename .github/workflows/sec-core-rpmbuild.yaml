@@ -59,7 +59,7 @@ jobs:
               rpm -qlp "$rpm" | awk -F'site-packages/' '
                 /site-packages\//{seen[$2]=1; split($2,a,"/"); top[a[1]]=1; next}
                 {print}
-              END{for(t in top) print "/usr/lib64/python3.11/site-packages/" t "/..."}
+              END{for(t in top) print "/opt/agent-sec/lib/python3.11/site-packages/" t "/..."}
               ' | sort
             else
               rpm -qlvp "$rpm"
@@ -76,6 +76,7 @@ jobs:
       - name: Verify Python dependencies match requirements.txt
         run: |
           echo "Checking installed Python packages against requirements.txt ..."
+          export PYTHONPATH=/opt/agent-sec/lib/python3.11/site-packages${PYTHONPATH:+:$PYTHONPATH}
           python3.11 << 'PYEOF'
           import importlib.metadata, sys
           from packaging.requirements import Requirement
@@ -107,6 +108,7 @@ jobs:
 
       - name: Verify all Python imports
         run: |
+          export PYTHONPATH=/opt/agent-sec/lib/python3.11/site-packages${PYTHONPATH:+:$PYTHONPATH}
           python3 << 'PYEOF'
           import importlib, pathlib, sys, os
 

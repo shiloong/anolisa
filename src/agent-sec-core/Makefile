@@ -84,7 +84,7 @@ SKILL_DIR          ?= /usr/share/anolisa/skills
 OPENCLAW_PLUGIN_DIR ?= /opt/agent-sec/openclaw-plugin
 WHEEL_DIR          ?= /opt/agent-sec/wheels
 CLI_STAGED_SITE    ?= _staged/site-packages
-PYTHON_SITEARCH    ?= /usr/lib64/python3.11/site-packages
+CLI_PRIVATE_SITE   ?= /opt/agent-sec/lib/python3.11/site-packages
 
 .PHONY: install-sandbox
 install-sandbox: ## Install linux-sandbox binary only
@@ -104,13 +104,16 @@ install-cli: ## Install agent-sec-cli wheel (for dev/debug)
 	pip3 install agent-sec-cli/target/wheels/agent_sec_cli-*.whl
 
 .PHONY: install-cli-site
-install-cli-site: ## Copy staged agent-sec-cli + deps to system site-packages
-	install -d -m 0755 $(DESTDIR)$(PYTHON_SITEARCH)
-	cp -rp $(CLI_STAGED_SITE)/. $(DESTDIR)$(PYTHON_SITEARCH)/
-	# Move uv-generated entry point from site-packages/bin/ to /usr/bin/
+install-cli-site: ## Copy staged agent-sec-cli + deps to private site-packages + wrapper
+	# 1. Copy all Python packages to private directory
+	install -d -m 0755 $(DESTDIR)$(CLI_PRIVATE_SITE)
+	cp -rp $(CLI_STAGED_SITE)/. $(DESTDIR)$(CLI_PRIVATE_SITE)/
+	# Remove uv-generated bin/ and .lock from private site-packages
+	rm -rf $(DESTDIR)$(CLI_PRIVATE_SITE)/bin
+	rm -f  $(DESTDIR)$(CLI_PRIVATE_SITE)/.lock
+	# 2. Install wrapper script as /usr/bin/agent-sec-cli
 	install -d -m 0755 $(DESTDIR)/usr/bin
-	install -p -m 0755 $(DESTDIR)$(PYTHON_SITEARCH)/bin/agent-sec-cli $(DESTDIR)/usr/bin/agent-sec-cli
-	rm -rf $(DESTDIR)$(PYTHON_SITEARCH)/bin
+	install -p -m 0755 scripts/agent-sec-cli-wrapper.sh $(DESTDIR)/usr/bin/agent-sec-cli
 
 .PHONY: install-skills
 install-skills: ## Install skill files to SKILL_DIR

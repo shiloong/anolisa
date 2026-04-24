@@ -1363,4 +1363,48 @@ export default {
   'Session exported to JSON: {{filename}}': '会话已导出为 JSON：{{filename}}',
   'Session exported to JSONL: {{filename}}': '会话已导出为 JSONL：{{filename}}',
   'Failed to export session: {{error}}': '导出会话失败：{{error}}',
+  // Clawhub
+  'Manage skills via clawhub CLI': '通过 clawhub CLI 管理技能',
+  'Search skills in the registry': '在注册表中搜索技能',
+  'Install a skill': '安装技能',
+  'Uninstall a skill': '卸载技能',
+  'Update skill(s). Usage: update <slug> | update --all':
+    '更新技能。用法：update <slug> | update --all',
+  'List installed skills': '列出已安装的技能',
+  'View skill details': '查看技能详情',
+  'Login to clawhub': '登录 clawhub',
+  'Usage: /clawhub login <token>': '用法: /clawhub login <token>',
+  'Show current identity': '显示当前身份',
+  'clawhub CLI is not installed. Install it now via npm install -g clawhub?':
+    'clawhub CLI 尚未安装。是否立即通过 npm install -g clawhub 安装？',
+  'Installing clawhub via npm install -g clawhub …':
+    '正在通过 npm install -g clawhub 安装……',
+  'clawhub installed successfully.': 'clawhub 安装成功。',
+  'Failed to install clawhub: {{error}}\nPlease install manually: npm install -g clawhub':
+    'clawhub 安装失败：{{error}}\n请手动安装：npm install -g clawhub',
+  'clawhub exited with code {{code}}.': 'clawhub 退出，退出码 {{code}}。',
+  'Hint: Run `clawhub login` to authenticate and bypass rate limits.':
+    '提示：运行 `clawhub login` 进行认证以绕过速率限制。',
+  'No results.': '无结果。',
+  'Command completed successfully.': '命令执行成功。',
+  'Clawhub Search': 'Clawhub 搜索',
+  'Clawhub Install': 'Clawhub 安装',
+  'Clawhub Uninstall': 'Clawhub 卸载',
+  'Clawhub Update': 'Clawhub 更新',
+  'Clawhub Installed Skills': 'Clawhub 已安装技能',
+  'Clawhub Inspect': 'Clawhub 详情',
+  'Clawhub Login': 'Clawhub 登录',
+  'Clawhub Identity': 'Clawhub 身份',
+  'Usage: /clawhub <subcommand> [args]': '用法：/clawhub <子命令> [参数]',
+  'Subcommands:': '子命令：',
+  'Search skills in the registry (subcommand help)':
+    '  search <关键词>        在注册表中搜索技能',
+  'Install a skill (subcommand help)': '  install <slug>          安装技能',
+  'Uninstall a skill (subcommand help)': '  uninstall <slug>        卸载技能',
+  'Update skills (subcommand help)': '  update <slug|--all>     更新技能',
+  'List installed skills (subcommand help)':
+    '  list                    列出已安装技能',
+  'View details (subcommand help)': '  inspect <slug>          查看技能详情',
+  'Login (subcommand help)': '  login <token>           登录 clawhub',
+  'Show identity (subcommand help)': '  whoami                  显示当前身份',
 };

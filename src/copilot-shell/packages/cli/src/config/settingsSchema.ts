@@ -1183,6 +1183,29 @@ const SETTINGS_SCHEMA = {
     showInDialog: false,
   },
 
+  clawhub: {
+    type: 'object',
+    label: 'Clawhub',
+    category: 'Skills',
+    requiresRestart: false,
+    default: {},
+    description:
+      'Configuration for the clawhub skill management CLI. Defaults to https://cn.clawhub-mirror.com.',
+    showInDialog: false,
+    properties: {
+      registry: {
+        type: 'string',
+        label: 'Clawhub Registry',
+        category: 'Skills',
+        requiresRestart: false,
+        default: undefined as string | undefined,
+        description:
+          'Registry URL for clawhub commands (search, install, update, etc.). Defaults to https://cn.clawhub-mirror.com if not set.',
+        showInDialog: false,
+      },
+    },
+  },
+
   experimental: {
     type: 'object',
     label: 'Experimental',

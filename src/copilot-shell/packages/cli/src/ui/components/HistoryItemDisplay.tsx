@@ -32,6 +32,7 @@ import { ExtensionsList } from './views/ExtensionsList.js';
 import { getMCPServerStatus } from '@copilot-shell/core';
 import { ToolsList } from './views/ToolsList.js';
 import { McpStatus } from './views/McpStatus.js';
+import { ClawhubOutputBox } from './views/ClawhubOutputBox.js';
 
 interface HistoryItemDisplayProps {
   item: HistoryItem;
@@ -167,6 +168,15 @@ const HistoryItemDisplayComponent: React.FC<HistoryItemDisplayProps> = ({
           contentWidth={contentWidth}
           tools={itemForDisplay.tools}
           showDescriptions={itemForDisplay.showDescriptions}
+        />
+      )}
+      {itemForDisplay.type === 'clawhub_output' && (
+        <ClawhubOutputBox
+          title={itemForDisplay.title}
+          items={itemForDisplay.items}
+          text={itemForDisplay.text}
+          isError={itemForDisplay.isError}
+          width={boxWidth}
         />
       )}
       {itemForDisplay.type === 'mcp_status' && (

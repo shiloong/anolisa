@@ -43,6 +43,7 @@ import { toolsCommand } from '../ui/commands/toolsCommand.js';
 import { vimCommand } from '../ui/commands/vimCommand.js';
 import { setupGithubCommand } from '../ui/commands/setupGithubCommand.js';
 import { statuslineCommand } from '../ui/commands/statuslineCommand.js';
+import { clawhubCommand } from '../ui/commands/clawhubCommand.js';
 
 /**
  * Loads the core, hard-coded slash commands that are an integral part
@@ -94,6 +95,7 @@ export class BuiltinCommandLoader implements ICommandLoader {
       settingsCommand,
       vimCommand,
       setupGithubCommand,
+      clawhubCommand,
       terminalSetupCommand,
       statuslineCommand,
     ];

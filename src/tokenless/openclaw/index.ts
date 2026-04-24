@@ -1,23 +1,22 @@
 /**
- * Token-Less Unified Plugin for OpenClaw
+ * Token-Less Unified Plugin for OpenClaw v5
  *
  * Combines two complementary optimisation strategies into a single plugin:
  *
  *   1. RTK command rewriting  — transparently rewrites exec tool commands to
  *      their RTK equivalents (delegated to `rtk rewrite`).
- *   2. Tokenless schema / response compression — compresses tool schemas and
- *      tool responses via `tokenless compress-schema` / `tokenless compress-response`.
+ *   2. Response compression   — compresses API/tool responses via
+ *      `tokenless compress-response`.
  *
- * Both features are thin delegates that shell out to their respective binaries.
- * If a binary is missing the corresponding feature is silently disabled.
+ * Stats recording is delegated to `tokenless stats record` CLI — no direct
+ * SQL access, no injection risk.
  *
- * Design principles:
- *   - Non-blocking: every operation has a timeout guard and failures passthrough.
- *   - Lazy binary detection: `which` is called at most once per binary.
- *   - Zero runtime dependencies beyond Node built-ins.
+ * Context passing uses environment variables (TOKENLESS_AGENT_ID,
+ * TOKENLESS_SESSION_ID, TOKENLESS_TOOL_USE_ID) which are inherited by
+ * child processes and read by RTK's stats patch.
  */
 
-import { execSync, execFileSync, spawnSync } from "child_process";
+import { execSync, execFileSync } from "child_process";
 
 // ---- Binary availability cache ------------------------------------------------
 
@@ -50,16 +49,12 @@ function checkTokenless(): boolean {
 
 function tryRtkRewrite(command: string): string | null {
   try {
-    // Use spawnSync instead of execSync because rtk uses exit code 3 to signal
-    // "command was rewritten" — execSync throws on any non-zero exit code,
-    // which would silently discard the rewritten result.
     const result = spawnSync("rtk", ["rewrite", command], {
       encoding: "utf-8",
       timeout: 2000,
       stdio: ["ignore", "pipe", "pipe"],
     });
     const rewritten = result.stdout?.trim();
-    // Exit 0 or 3 = success (3 means rewritten), exit 1 = no rewrite needed
     if ((result.status === 0 || result.status === 3) && rewritten && rewritten !== command) {
       return rewritten;
     }
@@ -69,24 +64,13 @@ function tryRtkRewrite(command: string): string | null {
   }
 }
 
-function tryCompressSchema(schema: any): any | null {
-  try {
-    const input = JSON.stringify(schema);
-    const result = execFileSync("tokenless", ["compress-schema"], {
-      encoding: "utf-8",
-      timeout: 3000,
-      input,
-    }).trim();
-    return JSON.parse(result);
-  } catch {
-    return null;
-  }
-}
-
-function tryCompressResponse(response: any): any | null {
+function tryCompressResponse(response: any, sessionId?: string, toolCallId?: string): any | null {
   try {
     const input = JSON.stringify(response);
-    const result = execFileSync("tokenless", ["compress-response"], {
+    const args = ["compress-response", "--agent-id", "openclaw"];
+    if (sessionId) args.push("--session-id", sessionId);
+    if (toolCallId) args.push("--tool-use-id", toolCallId);
+    const result = execFileSync("tokenless", args, {
       encoding: "utf-8",
       timeout: 3000,
       input,
@@ -102,12 +86,11 @@ function tryCompressResponse(response: any): any | null {
 export default {
   id: "tokenless-openclaw",
   name: "Token-Less",
-  version: "1.0.0",
-  description: "Unified RTK command rewriting + schema/response compression",
+  version: "5.0.0",
+  description: "Unified RTK command rewriting + response compression",
   register(api: any) {
   const pluginConfig = api.config ?? {};
   const rtkEnabled = pluginConfig.rtk_enabled !== false;
-  const schemaCompressionEnabled = pluginConfig.schema_compression_enabled !== false;
   const responseCompressionEnabled = pluginConfig.response_compression_enabled !== false;
   const verbose = pluginConfig.verbose !== false;
 
@@ -116,11 +99,16 @@ export default {
   if (rtkEnabled && checkRtk()) {
     api.on(
       "before_tool_call",
-      (event: { toolName: string; params: Record<string, unknown> }) => {
+      (event: { toolName: string; params: Record<string, unknown> }, ctx: { sessionId?: string; sessionKey?: string; agentId?: string; toolCallId?: string; runId?: string }) => {
         if (event.toolName !== "exec") return;
 
         const command = event.params?.command;
         if (typeof command !== "string") return;
+
+        // Set env vars so RTK can read agent/session/tool IDs
+        process.env.TOKENLESS_AGENT_ID = "openclaw";
+        if (ctx?.sessionId) process.env.TOKENLESS_SESSION_ID = ctx.sessionId;
+        if (ctx?.toolCallId) process.env.TOKENLESS_TOOL_USE_ID = ctx.toolCallId;
 
         const rewritten = tryRtkRewrite(command);
         if (!rewritten) return;
@@ -135,47 +123,26 @@ export default {
     );
   }
 
-  // ---- 2. Schema compression (before_tool_register) ---------------------------
-
-  if (schemaCompressionEnabled && checkTokenless()) {
-    api.on(
-      "before_tool_register",
-      (event: { toolName: string; schema: Record<string, unknown> }) => {
-        const compressed = tryCompressSchema(event.schema);
-        if (!compressed) return;
-
-        if (verbose) {
-          const before = JSON.stringify(event.schema).length;
-          const after = JSON.stringify(compressed).length;
-          console.log(
-            `[tokenless/schema] ${event.toolName}: ${before} -> ${after} chars (${Math.round((1 - after / before) * 100)}% reduction)`,
-          );
-        }
-
-        return { schema: compressed };
-      },
-      { priority: 10 },
-    );
-  }
-
-  // ---- 3. Response compression (tool_result_persist) -------------------------
+  // ---- 2. Response compression (tool_result_persist) --------------------------
 
   if (responseCompressionEnabled && checkTokenless()) {
     api.on(
       "tool_result_persist",
-      (event: { toolName: string; toolCallId?: string; message: any }) => {
-        // Skip exec tool results when RTK is enabled — RTK already produces
-        // optimized output, double-compression is wasteful.
-        if (rtkEnabled && rtkAvailable && event.toolName === "exec") return;
+      (event: { toolName?: string; toolCallId?: string; message: any; isSynthetic?: boolean }, ctx: { agentId?: string; sessionKey?: string; toolName?: string; toolCallId?: string }) => {
+        const beforeJson = JSON.stringify(event.message);
+        // Skip small responses
+        if (beforeJson.length < 200) return;
 
-        const compressed = tryCompressResponse(event.message);
+        const toolCallId = ctx?.toolCallId || event.toolCallId;
+
+        const compressed = tryCompressResponse(event.message, ctx?.sessionKey, toolCallId);
         if (!compressed) return;
 
         if (verbose) {
-          const before = JSON.stringify(event.message).length;
-          const after = JSON.stringify(compressed).length;
+          const beforeChars = JSON.stringify(event.message).length;
+          const afterChars = JSON.stringify(compressed).length;
           console.log(
-            `[tokenless/response] ${event.toolName}: ${before} -> ${after} chars (${Math.round((1 - after / before) * 100)}% reduction)`,
+            `[tokenless/response] ${event.toolName}: ${beforeChars} -> ${afterChars} chars (${Math.round((1 - afterChars / beforeChars) * 100)}% reduction)`,
           );
         }
 
@@ -190,10 +157,9 @@ export default {
   if (verbose) {
     const features = [
       rtkEnabled && rtkAvailable ? "rtk-rewrite" : null,
-      schemaCompressionEnabled && tokenlessAvailable ? "schema-compression" : null,
       responseCompressionEnabled && tokenlessAvailable ? "response-compression" : null,
     ].filter(Boolean);
-    console.log(`[tokenless] OpenClaw plugin registered — active features: ${features.join(", ") || "none"}`);
+    console.log(`[tokenless] OpenClaw plugin v5 registered — active features: ${features.join(", ") || "none"}`);
   }
   },
 };

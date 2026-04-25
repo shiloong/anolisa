@@ -103,6 +103,7 @@ The linux-sandbox binary provides secure sandboxed execution environments.
 Summary:        OpenClaw plugin for agent security
 Requires:       agent-sec-cli = %{version}-%{release}
 Requires:       nodejs >= 18
+Requires:       jq
 
 %description -n agent-sec-openclaw-hook
 OpenClaw IDE plugin providing agent security integration.

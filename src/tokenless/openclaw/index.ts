@@ -81,6 +81,38 @@ function tryCompressResponse(response: any, sessionId?: string, toolCallId?: str
   }
 }
 
+function tryTrimHistory(messages: any[], sessionId?: string): any[] | null {
+  try {
+    const input = JSON.stringify(messages);
+    const args = ["trim-history", "--agent-id", "openclaw"];
+    if (sessionId) args.push("--session-id", sessionId);
+    const result = execFileSync("tokenless", args, {
+      encoding: "utf-8",
+      timeout: 2000,
+      input,
+    }).trim();
+    return JSON.parse(result);
+  } catch {
+    return null;
+  }
+}
+
+function tryCompressHistory(messages: any[], sessionId?: string): string | null {
+  try {
+    const input = JSON.stringify(messages);
+    const args = ["compress-history", "--agent-id", "openclaw"];
+    if (sessionId) args.push("--session-id", sessionId);
+    const result = execFileSync("tokenless", args, {
+      encoding: "utf-8",
+      timeout: 5000,
+      input,
+    }).trim();
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 // ---- Plugin entry point -------------------------------------------------------
 
 export default {
@@ -92,6 +124,8 @@ export default {
   const pluginConfig = api.config ?? {};
   const rtkEnabled = pluginConfig.rtk_enabled !== false;
   const responseCompressionEnabled = pluginConfig.response_compression_enabled !== false;
+  const historyTrimEnabled = pluginConfig.history_trim_enabled !== false;
+  const deepCompressionEnabled = pluginConfig.deep_compression_enabled !== false;
   const verbose = pluginConfig.verbose !== false;
 
   // ---- 1. RTK command rewriting (before_tool_call) ----------------------------
@@ -152,14 +186,82 @@ export default {
     );
   }
 
+  // ---- 3. History trimming (before_model, priority 5) -----------------------
+
+  if (historyTrimEnabled && checkTokenless()) {
+    api.on(
+      "before_model",
+      (event: { llm_request?: { messages?: any[]; model?: string } }, ctx: { sessionId?: string; sessionKey?: string }) => {
+        const messages = event.llm_request?.messages;
+        if (!messages || messages.length < 4) return;
+
+        const trimmed = tryTrimHistory(messages, ctx?.sessionKey);
+        if (!trimmed) return;
+
+        if (verbose) {
+          console.log(`[tokenless/history] trim: ${messages.length} -> ${trimmed.length} messages`);
+        }
+
+        return {
+          hookSpecificOutput: {
+            hookEventName: "BeforeModel",
+            llm_request: { messages: trimmed },
+          },
+        };
+      },
+      { priority: 5 },
+    );
+  }
+
+  // ---- 4. Deep history compression (before_model, priority 20) --------------
+
+  if (deepCompressionEnabled && checkTokenless()) {
+    api.on(
+      "before_model",
+      (event: { llm_request?: { messages?: any[]; model?: string } }, ctx: { sessionId?: string; sessionKey?: string }) => {
+        const messages = event.llm_request?.messages;
+        if (!messages) return;
+
+        // Estimate tokens: ~4 chars per token
+        const totalChars = messages.reduce((sum: number, m: any) => sum + (typeof m.content === "string" ? m.content.length : 0), 0);
+        const estimatedTokens = Math.ceil(totalChars / 4);
+        const contextWindow = 128000;
+        if (estimatedTokens < contextWindow * 0.7) return;
+
+        const snapshot = tryCompressHistory(messages, ctx?.sessionKey);
+        if (!snapshot) return;
+
+        if (verbose) {
+          console.log(`[tokenless/history] deep compress: ${estimatedTokens} estimated tokens -> <state_snapshot>`);
+        }
+
+        const preserveCount = Math.floor(messages.length * 0.3);
+        const preservedMessages = messages.slice(-preserveCount);
+        const snapshotMessage = { role: "system", content: snapshot };
+
+        return {
+          hookSpecificOutput: {
+            hookEventName: "BeforeModel",
+            llm_request: {
+              messages: [snapshotMessage, ...preservedMessages],
+            },
+          },
+        };
+      },
+      { priority: 20 },
+    );
+  }
+
   // ---- Done -------------------------------------------------------------------
 
   if (verbose) {
     const features = [
       rtkEnabled && rtkAvailable ? "rtk-rewrite" : null,
       responseCompressionEnabled && tokenlessAvailable ? "response-compression" : null,
+      historyTrimEnabled && tokenlessAvailable ? "history-trim" : null,
+      deepCompressionEnabled && tokenlessAvailable ? "deep-compression" : null,
     ].filter(Boolean);
-    console.log(`[tokenless] OpenClaw plugin v5 registered — active features: ${features.join(", ") || "none"}`);
+    console.log(`[tokenless] OpenClaw plugin v5.1 registered — active features: ${features.join(", ") || "none"}`);
   }
   },
 };

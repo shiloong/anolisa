@@ -8,7 +8,7 @@ RTK_DIR := third_party/rtk
 
 .PHONY: build build-tokenless build-rtk install test lint clean dist \
         openclaw-install openclaw-uninstall \
-        copilot-shell-install copilot-shell-uninstall setup help
+        copilot-shell-install copilot-shell-uninstall setup help test-history
 
 # Default target
 all: build
@@ -33,11 +33,15 @@ install: build
 	@echo "==> Installed tokenless and rtk to $(INSTALL_DIR)"
 
 # Run tests
-test: test-tokenless test-rtk
+test: test-tokenless test-history test-rtk
 
 test-tokenless:
 	@echo "==> Testing tokenless..."
 	cargo test --workspace
+
+test-history:
+	@echo "==> Testing tokenless-history..."
+	cargo test -p tokenless-history
 
 test-rtk:
 	@echo "==> Testing rtk build..."
@@ -131,10 +135,12 @@ setup: install openclaw-install copilot-shell-install
 	@echo "  - rtk:       $(INSTALL_DIR)/rtk"
 	@echo "  - OpenClaw:  $(OPENCLAW_DIR)/"
 	@echo "  - Hooks:     $(COPILOT_SHELL_HOOK_DIR)/tokenless-*.sh"
+	@echo "  - Hooks include: trim-history (BeforeModel), compress-history (PreCompact)"
 	@echo "============================================"
 	@echo ""
 	@echo "Verify installation:"
 	@echo "  tokenless --version"
+	@echo "  tokenless trim-history --help"
 	@echo "  rtk --version"
 
 # Help

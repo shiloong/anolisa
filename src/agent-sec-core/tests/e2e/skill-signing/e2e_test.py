@@ -27,7 +27,7 @@ from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[3]  # agent-sec-core/
 SIGN_SKILL_SH = REPO_ROOT / "tools" / "sign-skill.sh"
-VERIFIER_DIR = REPO_ROOT / "skill" / "scripts" / "asset-verify"
+VERIFIER_DIR = REPO_ROOT / "agent-sec-cli" / "src" / "agent_sec_cli" / "asset_verify"
 VERIFIER_PY = VERIFIER_DIR / "verifier.py"
 
 SIGNING_DIR = ".skill-meta"

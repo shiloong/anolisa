@@ -30,6 +30,24 @@ test-prompt-scanner-e2e: ## Run prompt-scanner e2e tests (downloads ML model on 
 	@echo "🧪 Running prompt-scanner e2e tests..."
 	uv run --project agent-sec-cli pytest tests/e2e/prompt-scanner/e2e_test.py
 
+.PHONY: test-e2e-rpm
+test-e2e-rpm: ## Run E2E tests against RPM-installed agent-sec-cli binary
+	@echo "🧪 Running E2E tests on installed RPM..."
+	@command -v agent-sec-cli >/dev/null 2>&1 || { echo "ERROR: agent-sec-cli not found on PATH"; exit 1; }
+	@command -v pytest >/dev/null 2>&1 || pip3 install --quiet pytest
+	python3 -m pytest tests/e2e/ \
+		--import-mode=importlib \
+		--ignore=tests/e2e/skill-ledger \
+		--ignore=tests/e2e/skill-signing \
+		--ignore=tests/e2e/linux-sandbox \
+		--ignore=tests/e2e/prompt-scanner \
+		-k 'not test_error_event_writes_to_sqlite' \
+		-v --tb=short
+	@# standalone-script e2e suites (not pytest-compatible)
+	python3 tests/e2e/skill-ledger/e2e_test.py
+	@# skill-signing e2e skipped: imports Python source code
+	@# linux-sandbox e2e skipped: requires privileged container
+
 .PHONY: test-rust
 test-rust: ## Run Rust sandbox tests
 	@echo "🧪 Running Rust tests..."

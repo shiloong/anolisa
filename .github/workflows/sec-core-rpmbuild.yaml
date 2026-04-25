@@ -141,6 +141,15 @@ jobs:
           print('All modules imported successfully')
           PYEOF
 
+      - name: Install E2E test dependencies
+        run: dnf install -y jq
+
+      - name: Uninstall skills package before E2E tests
+        run: rpm -e agent-sec-skills --nodeps
+
+      - name: Run E2E tests on installed RPM
+        run: make -C src/agent-sec-core test-e2e-rpm
+
       - name: Upload RPM artifacts
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4

@@ -40,6 +40,20 @@ pub enum Phase {
     Planning,
 }
 
+impl std::str::FromStr for Phase {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "exploration" => Phase::Exploration,
+            "implementation" => Phase::Implementation,
+            "verification" => Phase::Verification,
+            "planning" => Phase::Planning,
+            _ => Phase::Exploration,
+        })
+    }
+}
+
 /// Compression snapshot for incremental compression
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompressionSnapshot {

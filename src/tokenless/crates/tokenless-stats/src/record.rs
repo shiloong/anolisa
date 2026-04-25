@@ -7,7 +7,7 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-/// Type of operation performed (three compression types)
+/// Type of operation performed (compression and rewriting types)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum OperationType {
@@ -17,6 +17,10 @@ pub enum OperationType {
     CompressResponse,
     /// Command rewriting (RTK, PreToolUse hook)
     RewriteCommand,
+    /// History trimming (BeforeModel hook, Layer 1)
+    TrimHistory,
+    /// History deep compression (PreCompact/BeforeModel hook, Layer 3)
+    CompressHistory,
 }
 
 impl OperationType {
@@ -25,6 +29,8 @@ impl OperationType {
             OperationType::CompressSchema => "compress-schema",
             OperationType::CompressResponse => "compress-response",
             OperationType::RewriteCommand => "rewrite-command",
+            OperationType::TrimHistory => "trim-history",
+            OperationType::CompressHistory => "compress-history",
         }
     }
 }
@@ -37,6 +43,8 @@ impl FromStr for OperationType {
             "compress-schema" => OperationType::CompressSchema,
             "compress-response" => OperationType::CompressResponse,
             "rewrite-command" => OperationType::RewriteCommand,
+            "trim-history" => OperationType::TrimHistory,
+            "compress-history" => OperationType::CompressHistory,
             _ => OperationType::CompressSchema,
         })
     }

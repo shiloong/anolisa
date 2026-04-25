@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 tokenless-schema = { path = "../tokenless-schema" }
 tokenless-stats = { path = "../tokenless-stats" }
+tokenless-history = { path = "../tokenless-history" }
 clap.workspace = true
 serde_json.workspace = true
 chrono = { workspace = true, features = ["serde"] }

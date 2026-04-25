@@ -8,6 +8,7 @@ use tokenless_schema::{ResponseCompressor, SchemaCompressor};
 use tokenless_stats::estimate_tokens_from_chars;
 use tokenless_stats::{format_list, format_show, format_summary};
 use tokenless_stats::{OperationType, StatsRecord, StatsRecorder, TokenlessConfig};
+use tokenless_history::{CompressionSnapshot, DeepCompressor, HistoryMessage, Phase, PhaseDetector, TrimEngine, TrimRules};
 
 #[derive(Parser)]
 #[command(
@@ -52,6 +53,46 @@ enum Commands {
         /// Tool use ID
         #[arg(long)]
         tool_use_id: Option<String>,
+        /// Tool name for category-specific summarization strategy
+        #[arg(long)]
+        tool_name: Option<String>,
+    },
+    /// Trim redundant content from LLM conversation history
+    TrimHistory {
+        #[arg(short, long)]
+        file: Option<String>,
+        /// Agent ID for stats (e.g., "copilot-shell")
+        #[arg(long)]
+        agent_id: Option<String>,
+        /// Session ID for grouping
+        #[arg(long)]
+        session_id: Option<String>,
+        /// Comma-separated list of enabled rules
+        #[arg(long, default_value = "file-read-dedup,system-reminder-dedup,ide-context-dedup,thought-strip")]
+        rules: String,
+        /// Maximum shell output lines before truncation
+        #[arg(long, default_value_t = 100)]
+        max_shell_lines: usize,
+    },
+    /// Deep compress conversation history into a state snapshot
+    CompressHistory {
+        #[arg(short, long)]
+        file: Option<String>,
+        /// Agent ID for stats
+        #[arg(long)]
+        agent_id: Option<String>,
+        /// Session ID for grouping
+        #[arg(long)]
+        session_id: Option<String>,
+        /// Previous snapshot file for incremental compression
+        #[arg(long)]
+        previous_snapshot: Option<String>,
+        /// Preserve ratio for history split point (0.0-1.0)
+        #[arg(long, default_value_t = 0.3)]
+        preserve_ratio: f64,
+        /// Task phase for relevance scoring
+        #[arg(long)]
+        phase: Option<String>,
     },
     /// View and export statistics
     #[command(subcommand)]
@@ -181,6 +222,7 @@ fn run() -> Result<(), (String, i32)> {
             agent_id,
             session_id,
             tool_use_id,
+            tool_name: _tool_name,
         } => {
             let input = read_input(&file).map_err(|e| (e, 2))?;
             let value: serde_json::Value = serde_json::from_str(&input)
@@ -206,6 +248,75 @@ fn run() -> Result<(), (String, i32)> {
                 tool_use_id,
                 input,
                 after_compact,
+            );
+        }
+        Commands::TrimHistory {
+            file,
+            agent_id,
+            session_id,
+            rules,
+            max_shell_lines,
+        } => {
+            let input = read_input(&file).map_err(|e| (e, 2))?;
+            let messages: Vec<HistoryMessage> = serde_json::from_str(&input)
+                .map_err(|e| (format!("JSON parse error: {}", e), 1))?;
+
+            let trim_rules = parse_trim_rules(&rules, max_shell_lines);
+            let engine = TrimEngine::new(trim_rules);
+            let trimmed = engine.trim(&messages);
+
+            let result_json = serde_json::to_string_pretty(&trimmed)
+                .map_err(|e| (format!("Serialization error: {}", e), 2))?;
+
+            println!("{}", result_json);
+
+            // Auto-record stats with actual text content
+            let after_compact = serde_json::to_string(&trimmed)
+                .unwrap_or(result_json.clone());
+            record_compression_stats(
+                OperationType::TrimHistory,
+                agent_id,
+                session_id,
+                None,
+                input,
+                after_compact,
+            );
+        }
+        Commands::CompressHistory {
+            file,
+            agent_id,
+            session_id,
+            previous_snapshot,
+            preserve_ratio,
+            phase,
+        } => {
+            let input = read_input(&file).map_err(|e| (e, 2))?;
+            let messages: Vec<HistoryMessage> = serde_json::from_str(&input)
+                .map_err(|e| (format!("JSON parse error: {}", e), 1))?;
+
+            let prev = previous_snapshot.and_then(|path| {
+                fs::read_to_string(path)
+                    .ok()
+                    .and_then(|s| serde_json::from_str::<CompressionSnapshot>(&s).ok())
+            });
+
+            let detected_phase = phase
+                .as_deref()
+                .and_then(|p| p.parse::<Phase>().ok())
+                .unwrap_or_else(|| PhaseDetector::new().detect(&messages));
+
+            let compressor = DeepCompressor::new(preserve_ratio);
+            let snapshot = compressor.compress(&messages, prev.as_ref(), detected_phase);
+
+            println!("{}", snapshot.xml);
+
+            record_compression_stats(
+                OperationType::CompressHistory,
+                agent_id,
+                session_id,
+                None,
+                input,
+                snapshot.xml.clone(),
             );
         }
         Commands::Stats(stats_cmd) => {
@@ -295,6 +406,17 @@ fn run() -> Result<(), (String, i32)> {
     }
 
     Ok(())
+}
+
+fn parse_trim_rules(rules_str: &str, max_shell_lines: usize) -> TrimRules {
+    let enabled: Vec<&str> = rules_str.split(',').collect();
+    TrimRules {
+        file_read_dedup: enabled.contains(&"file-read-dedup"),
+        system_reminder_dedup: enabled.contains(&"system-reminder-dedup"),
+        ide_context_dedup: enabled.contains(&"ide-context-dedup"),
+        thought_strip: enabled.contains(&"thought-strip"),
+        max_shell_lines,
+    }
 }
 
 /// Record compression stats — fail-silent so compression output

@@ -551,8 +551,19 @@ dependencies = [
  "clap",
  "rusqlite",
  "serde_json",
+ "tokenless-history",
  "tokenless-schema",
  "tokenless-stats",
+]
+
+[[package]]
+name = "tokenless-history"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "regex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

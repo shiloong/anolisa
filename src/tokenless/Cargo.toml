@@ -4,6 +4,7 @@ members = [
     "crates/tokenless-schema",
     "crates/tokenless-cli",
     "crates/tokenless-stats",
+    "crates/tokenless-history",
 ]
 exclude = [
     "third_party/rtk",

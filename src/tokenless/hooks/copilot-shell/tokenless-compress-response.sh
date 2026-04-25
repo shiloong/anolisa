@@ -46,12 +46,13 @@ SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null || echo ''
 TOOL_USE_ID=$(echo "$INPUT" | jq -r '.tool_use_id // empty' 2>/dev/null || echo '')
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // "unknown"' 2>/dev/null || echo 'unknown')
 
-# --- Compress response ---
+# --- Compress response (with tool-aware strategy) ---
 
 COMPRESSED=$(echo "$TOOL_RESPONSE" | tokenless compress-response \
   --agent-id copilot-shell \
   ${SESSION_ID:+--session-id "$SESSION_ID"} \
   ${TOOL_USE_ID:+--tool-use-id "$TOOL_USE_ID"} \
+  ${TOOL_NAME:+--tool-name "$TOOL_NAME"} \
   2>/dev/null) || {
   echo "[tokenless] WARNING: Response compression failed. Passing through unchanged." >&2
   exit 0

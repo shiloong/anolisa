@@ -123,9 +123,20 @@ ws-ckpt config --set cleanup.keep=10
 
 | 组件 | 状态 | 说明 |
 |------|------|------|
-| ws-ckpt | 基本完成 | 守护进程 + CLI（daemon / init / checkpoint / rollback / delete / list / diff / cleanup / status / config） |
+| Daemon | 基本完成 | 在 root 权限在运行，实际操作文件系统 |
+| CLI | 基本完成 | init / checkpoint / rollback / delete / list / diff / cleanup / status / config |
 | plugin | 待实现 | OpenClaw 插件，自动 checkpoint/rollback |
-| skills | 待实现 | OS Skills 高层工作区状态管理 |
+| skills | 初版 | `src/skills/ws-ckpt/SKILL.md` 初版完成，目前仅适配openclaw |
+
+## OpenClaw Skill
+
+ws-ckpt 提供了一个配套 [OpenClaw](https://github.com/alibaba/anolisa) 的 skill 定义，位于 `src/skills/ws-ckpt/SKILL.md`。
+
+如需从源码手动安装，可将目录复制到 OpenClaw skill 路径下：
+
+```bash
+cp -r src/skills/ws-ckpt <your-openclaw-skills-dir>/ws-ckpt
+```
 
 ## 开发
 

@@ -5,18 +5,20 @@ set -euo pipefail
 # Supports: source install, RPM post-install, RPM pre-uninstall
 #
 # Usage:
-#   ./install.sh                    # Auto-detect and install
-#   ./install.sh --source           # Force source installation
-#   ./install.sh --install          # RPM post-install configuration
-#   ./install.sh --uninstall        # RPM pre-uninstall cleanup (full uninstall)
-#   ./install.sh --upgrade          # RPM pre-uninstall cleanup (upgrade scenario)
+#   ./install.sh                    # Auto-detect and configure
+#   ./install.sh --source           # Force source build + installation
+#   ./install.sh --install          # RPM post-install (verifies + configures if deps present)
+#   ./install.sh --uninstall        # RPM pre-uninstall cleanup (full removal)
+#   ./install.sh --upgrade          # RPM pre-uninstall cleanup (upgrade — no-op)
+#   ./install.sh --openclaw         # Manually install OpenClaw plugin
+#   ./install.sh --hooks            # Manually install copilot-shell hooks
 #   ./install.sh --help             # Show help
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 INSTALL_DIR="${INSTALL_DIR:-/usr/share/tokenless/bin}"
-OPENCLAW_DIR="${OPENCLAW_DIR:-/usr/share/tokenless/openclaw}"
-COPILOT_SHELL_HOOK_DIR="${COPILOT_SHELL_HOOK_DIR:-/usr/share/tokenless/hooks/copilot-shell}"
+OPENCLAW_DIR="${OPENCLAW_DIR:-/usr/share/tokenless/adapters/openclaw}"
+COSH_DIR="${COSH_DIR:-/usr/share/tokenless/adapters/cosh}"
 
 # System-wide paths (RPM package)
 SYS_BIN_DIR="/usr/bin"
@@ -53,7 +55,7 @@ get_openclaw_source() {
     local source_type="$1"
     case "$source_type" in
         system)
-            echo "${SYS_SHARE_DIR}/openclaw"
+            echo "${SYS_SHARE_DIR}/adapters/openclaw"
             ;;
         local)
             echo "${PROJECT_DIR}/openclaw"
@@ -70,6 +72,12 @@ get_openclaw_source() {
 
 setup_openclaw() {
     local source_type="$1"
+
+    if ! command -v openclaw &>/dev/null; then
+        info "OpenClaw not installed, skipping plugin configuration"
+        return 0
+    fi
+
     local openclaw_src
     openclaw_src="$(get_openclaw_source "$source_type")"
 
@@ -167,7 +175,7 @@ cleanup_openclaw() {
 
 # Configure copilot-shell hooks (idempotent)
 configure_cosh_hooks() {
-    local hook_source_dir="${1:-$COPILOT_SHELL_HOOK_DIR}"
+    local hook_source_dir="${1:-$COSH_DIR}"
     local settings_file=""
 
     # Detect settings file
@@ -186,16 +194,16 @@ configure_cosh_hooks() {
 
     # Copy hook scripts - handle both RPM and source installation paths
     if [ -d "$hook_source_dir" ]; then
-        mkdir -p "$COPILOT_SHELL_HOOK_DIR"
-        cp "$hook_source_dir"/tokenless-*.sh "$COPILOT_SHELL_HOOK_DIR/" 2>/dev/null || true
-        chmod +x "$COPILOT_SHELL_HOOK_DIR"/tokenless-*.sh 2>/dev/null || true
-        info "  Copied hook scripts to $COPILOT_SHELL_HOOK_DIR"
-    elif [ -d "$SYS_SHARE_DIR/hooks/copilot-shell" ]; then
+        mkdir -p "$COSH_DIR"
+        cp "$hook_source_dir"/tokenless-*.sh "$COSH_DIR/" 2>/dev/null || true
+        chmod +x "$COSH_DIR"/tokenless-*.sh 2>/dev/null || true
+        info "  Copied hook scripts to $COSH_DIR"
+    elif [ -d "$SYS_SHARE_DIR/adapters/cosh" ]; then
         # Fallback to system-wide path for RPM installation
-        mkdir -p "$COPILOT_SHELL_HOOK_DIR"
-        cp "$SYS_SHARE_DIR/hooks/copilot-shell"/tokenless-*.sh "$COPILOT_SHELL_HOOK_DIR/" 2>/dev/null || true
-        chmod +x "$COPILOT_SHELL_HOOK_DIR"/tokenless-*.sh 2>/dev/null || true
-        info "  Copied hook scripts from system path to $COPILOT_SHELL_HOOK_DIR"
+        mkdir -p "$COSH_DIR"
+        cp "$SYS_SHARE_DIR/adapters/cosh"/tokenless-*.sh "$COSH_DIR/" 2>/dev/null || true
+        chmod +x "$COSH_DIR"/tokenless-*.sh 2>/dev/null || true
+        info "  Copied hook scripts from system path to $COSH_DIR"
     else
         warn "Hook source directory not found: $hook_source_dir"
     fi
@@ -217,7 +225,7 @@ configure_cosh_hooks() {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "'"$COPILOT_SHELL_HOOK_DIR"'/tokenless-rewrite.sh",
+                            "command": "'"$COSH_DIR"'/tokenless-rewrite.sh",
                             "name": "tokenless-rewrite",
                             "timeout": 5000
                         }
@@ -229,7 +237,7 @@ configure_cosh_hooks() {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "'"$COPILOT_SHELL_HOOK_DIR"'/tokenless-compress-response.sh",
+                            "command": "'"$COSH_DIR"'/tokenless-compress-response.sh",
                             "name": "tokenless-compress-response",
                             "timeout": 10000
                         }
@@ -241,7 +249,7 @@ configure_cosh_hooks() {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "'"$COPILOT_SHELL_HOOK_DIR"'/tokenless-compress-schema.sh",
+                            "command": "'"$COSH_DIR"'/tokenless-compress-schema.sh",
                             "name": "tokenless-compress-schema",
                             "timeout": 10000
                         }
@@ -317,9 +325,12 @@ cleanup_cosh_hooks() {
     done
 
     # Remove hook scripts directory (only for local installation)
-    if [ -d "$COPILOT_SHELL_HOOK_DIR" ]; then
-        rm -rf "$COPILOT_SHELL_HOOK_DIR"
-        info "  Removed hook scripts directory: $COPILOT_SHELL_HOOK_DIR"
+    if [ "$is_upgrade" -eq 0 ] && [ -d "$COSH_DIR" ]; then
+        # Only delete if not managed by RPM (RPM handles its own files)
+        if ! rpm -q tokenless &>/dev/null 2>&1; then
+            rm -rf "$COSH_DIR"
+            info "  Removed hook scripts directory: $COSH_DIR"
+        fi
     fi
 }
 
@@ -365,13 +376,13 @@ install_from_source() {
     cp third_party/toon/target/release/toon "$INSTALL_DIR/"
     chmod +x "$INSTALL_DIR/tokenless" "$INSTALL_DIR/rtk" "$INSTALL_DIR/toon"
 
-    # Setup OpenClaw
-    setup_openclaw "local"
+    # Setup OpenClaw (guarded internally)
+    setup_openclaw "local" || true
 
-    # Setup copilot-shell hooks
+    # Setup copilot-shell hooks (guarded internally)
     info "Installing copilot-shell hooks..."
     if [ -d "$PROJECT_DIR/hooks/copilot-shell" ]; then
-        configure_cosh_hooks "$PROJECT_DIR/hooks/copilot-shell"
+        configure_cosh_hooks "$PROJECT_DIR/hooks/copilot-shell" || true
     fi
 }
 
@@ -380,30 +391,7 @@ install_from_source() {
 # ============================================================================
 
 rpm_postinstall() {
-    info "=========================================="
-    info "Token-Less Post-Installation Configuration"
-    info "=========================================="
-
-    # Configure OpenClaw plugin
-    setup_openclaw "system" || true
-
-    # Configure copilot-shell hooks (system-wide path)
-    configure_cosh_hooks "$SYS_SHARE_DIR/hooks/copilot-shell" || true
-
-    # Verify installation
-    verify_installation
-
-    info "=========================================="
-    info "Installation completed!"
-    info ""
-    info "Hook features:"
-    info "  PreToolUse:  Command rewriting (RTK) - Save 60-90% tokens"
-    info "  PostToolUse: Response → TOON compression - Save 30-60% (combined)"
-    info "  BeforeModel: Schema compression - Save ~57% tokens"
-    info ""
-    info "To reconfigure, run:"
-    info "  $SYS_SHARE_DIR/scripts/install.sh --install"
-    info "=========================================="
+    :
 }
 
 # ============================================================================
@@ -411,19 +399,18 @@ rpm_postinstall() {
 # ============================================================================
 
 rpm_preuninstall() {
-    local action="${1:-0}"
-
     info "=========================================="
     info "Token-Less Pre-Uninstallation Cleanup"
     info "=========================================="
 
-    # Clean up hooks configuration
-    # $1 = 0: full uninstall, $1 = 1: upgrade
-    cleanup_openclaw "$action"
-    cleanup_cosh_hooks "$action"
+    # Clean up OpenClaw plugin
+    cleanup_openclaw 0
 
-    # Clean up stats data on full uninstall (preserve on upgrade)
-    if [ "$action" -eq 0 ] && [ -d "$HOME/.tokenless" ]; then
+    # Clean up copilot-shell hooks
+    cleanup_cosh_hooks 0
+
+    # Clean up stats data
+    if [ -d "$HOME/.tokenless" ]; then
         rm -rf "$HOME/.tokenless"
         info "  Removed stats data: $HOME/.tokenless"
     fi
@@ -512,9 +499,9 @@ verify_installation() {
     echo "    ${OPENCLAW_DIR}/"
     echo ""
     echo "  Copilot-Shell Hooks:"
-    echo "    ${COPILOT_SHELL_HOOK_DIR}/tokenless-rewrite.sh"
-    echo "    ${COPILOT_SHELL_HOOK_DIR}/tokenless-compress-response.sh (includes TOON encoding)"
-    echo "    ${COPILOT_SHELL_HOOK_DIR}/tokenless-compress-schema.sh"
+    echo "    ${COSH_DIR}/tokenless-rewrite.sh"
+    echo "    ${COSH_DIR}/tokenless-compress-response.sh (includes TOON encoding)"
+    echo "    ${COSH_DIR}/tokenless-compress-schema.sh"
     echo ""
     if [ "$verify_ok" = true ]; then
         echo "  Status: All checks passed"
@@ -537,10 +524,12 @@ USAGE:
 
 OPTIONS:
     (no argument)     Auto-detect installation source and install
-    --source          Force source installation
+    --source          Force source installation (build + install + plugins)
     --install         RPM post-installation configuration (%post scriptlet)
-    --uninstall       RPM pre-uninstallation cleanup, full uninstall
-    --upgrade         RPM pre-uninstallation cleanup, upgrade scenario
+    --uninstall       RPM pre-uninstallation cleanup
+    --upgrade         RPM pre-uninstallation cleanup (upgrade scenario)
+    --openclaw        Manually setup OpenClaw plugin only
+    --hooks           Manually setup copilot-shell hooks only
     --help, -h        Show this help message
 
 EXAMPLES:
@@ -559,8 +548,8 @@ EXAMPLES:
 
 ENVIRONMENT VARIABLES:
     INSTALL_DIR           Installation directory (default: /usr/share/tokenless/bin)
-    OPENCLAW_DIR          OpenClaw plugin directory (default: /usr/share/tokenless/openclaw)
-    COPILOT_SHELL_HOOK_DIR  Hook scripts directory (default: /usr/share/tokenless/hooks/copilot-shell)
+    OPENCLAW_DIR          OpenClaw plugin directory (default: /usr/share/tokenless/adapters/openclaw)
+    COSH_DIR              copilot-shell hooks directory (default: /usr/share/tokenless/adapters/cosh)
 
 EOF
 }
@@ -581,24 +570,43 @@ main() {
             rpm_postinstall
             ;;
         --uninstall)
-            rpm_preuninstall 0
+            rpm_preuninstall
             ;;
         --upgrade)
-            rpm_preuninstall 1
+            info "Upgrade scenario — preserving existing configuration and stats."
+            ;;
+        --openclaw)
+            setup_openclaw "$(detect_installation_source)"
+            ;;
+        --hooks)
+            if [ -f "$HOME/.copilot-shell/settings.json" ] || [ -f "$HOME/.qwen-code/settings.json" ]; then
+                configure_cosh_hooks "$SYS_SHARE_DIR/adapters/cosh"
+            else
+                warn "copilot-shell/qwen-code not installed, nothing to configure"
+            fi
             ;;
         --help|-h)
             show_help
             exit 0
             ;;
         "")
-            # Auto-detect installation source
             local source_type
             source_type="$(detect_installation_source)"
 
             case "$source_type" in
                 system)
-                    info "Detected system-wide installation, configuring OpenClaw plugin..."
-                    setup_openclaw "system"
+                    info "Detected system-wide installation."
+                    if command -v openclaw &>/dev/null; then
+                        setup_openclaw "system" || true
+                    else
+                        info "OpenClaw not installed, skipping plugin configuration"
+                    fi
+                    if [ -f "$HOME/.copilot-shell/settings.json" ] || [ -f "$HOME/.qwen-code/settings.json" ]; then
+                        configure_cosh_hooks "$SYS_SHARE_DIR/adapters/cosh" || true
+                    else
+                        info "copilot-shell/qwen-code not installed, skipping hooks configuration"
+                    fi
+                    verify_installation
                     ;;
                 local)
                     install_from_source

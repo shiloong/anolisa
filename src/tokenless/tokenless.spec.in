@@ -4,7 +4,7 @@
 Name:           tokenless
 Version:        @VERSION@
 Release:        %{anolis_release}%{?dist}
-Summary:        LLM Token Optimization Toolkit - Schema/Response Compression + Command Rewriting
+Summary:        LLM Token Optimization Toolkit - Schema/Response Compression + Command Rewriting + Tool Ready
 
 License:        MIT and Apache-2.0
 URL:            https://github.com/alibaba/anolisa
@@ -21,14 +21,15 @@ Requires:       bash
 
 %description
 Token-Less is an LLM token optimization toolkit that significantly reduces token
-consumption through Schema/Response Compression, TOON Context Compression, and
-Command Rewriting strategies.
+consumption through Schema/Response Compression, TOON Context Compression,
+Command Rewriting, and Tool Ready environment pre-check strategies.
 
 Core Features:
 - Schema Compression: Compresses OpenAI Function Calling tool definitions
 - Response Compression: Compresses API/tool responses (removes debug/null/empty)
 - TOON Context Compression: Encodes JSON to TOON format, chained after response compression
 - Command Rewriting: Filters CLI command output via RTK
+- Tool Ready: Pre-execution environment check, auto-fix, and failure attribution
 - Statistics Tracking: SQLite-based metrics for compression effectiveness
 
 The package includes:
@@ -45,21 +46,21 @@ Note: OpenClaw plugin and copilot-shell hooks are available under
 # Clean any stale build artifacts from the tarball
 cargo clean --release
 cargo clean --release --manifest-path third_party/rtk/Cargo.toml
-cargo clean --release --manifest-path third_party/toon/Cargo.toml
+# Do NOT clean toon target — may contain pre-built binary (Rust < 1.88 fallback)
 
 # Apply tokenless stats patch to RTK (upstream rtk v0.36.0)
 # Patch is included in the tarball under third_party/patches/
 patch --forward -p1 --no-backup-if-mismatch -d third_party/rtk < third_party/patches/rtk-tokenless-stats.patch
 
 %build
-# Build tokenless (schema + response compression + stats)
+# Build tokenless (schema + response compression + stats + env-check)
 cargo build --release
 
 # Build rtk (command rewriting)
 cargo build --release --manifest-path third_party/rtk/Cargo.toml
 
-# Build toon (JSON format encoder)
-cargo build --release --manifest-path third_party/toon/Cargo.toml --features cli
+# toon requires rust >= 1.88; use pre-built binary if cargo build fails
+cargo build --release --manifest-path third_party/toon/Cargo.toml --features cli || true
 
 %install
 rm -rf %{buildroot}
@@ -70,16 +71,27 @@ mkdir -p %{buildroot}%{_docdir}/tokenless
 # Install binaries
 install -m 0755 target/release/tokenless %{buildroot}%{_bindir}/tokenless
 install -m 0755 third_party/rtk/target/release/rtk %{buildroot}%{_bindir}/rtk
-install -m 0755 third_party/toon/target/release/toon %{buildroot}%{_bindir}/toon
+# toon: use built binary if available, fallback to pre-installed
+if [ -f "third_party/toon/target/release/toon" ]; then
+    install -m 0755 third_party/toon/target/release/toon %{buildroot}%{_bindir}/toon
+else
+    install -m 0755 /usr/bin/toon %{buildroot}%{_bindir}/toon
+fi
 
 # Install documentation
 install -m 0644 docs/tokenless-user-manual-en.md %{buildroot}%{_docdir}/tokenless/
 install -m 0644 docs/tokenless-user-manual-zh.md %{buildroot}%{_docdir}/tokenless/
 install -m 0644 docs/response-compression.md %{buildroot}%{_docdir}/tokenless/
+install -m 0644 docs/tool-ready.md %{buildroot}%{_docdir}/tokenless/
 install -m 0644 LICENSE %{buildroot}%{_docdir}/tokenless/
 
 # Install core
 mkdir -p %{buildroot}%{_datadir}/tokenless/core
+
+# Install core env-check (shared across all agents)
+mkdir -p %{buildroot}%{_datadir}/tokenless/core/env-check
+install -m 0644 core/env-check/tool-ready-spec.json %{buildroot}%{_datadir}/tokenless/core/env-check/
+install -m 0755 core/env-check/tokenless-env-fix.sh %{buildroot}%{_datadir}/tokenless/core/env-check/
 
 # Install adapters (agent-specific plugins/hooks)
 mkdir -p %{buildroot}%{_datadir}/tokenless/adapters/openclaw
@@ -103,15 +115,19 @@ install -m 0755 scripts/install.sh %{buildroot}%{_datadir}/tokenless/scripts/
 %attr(0755,root,root) %{_bindir}/toon
 %doc %{_docdir}/tokenless/LICENSE
 %doc %{_docdir}/tokenless/response-compression.md
+%doc %{_docdir}/tokenless/tool-ready.md
 %doc %{_docdir}/tokenless/tokenless-user-manual-en.md
 %doc %{_docdir}/tokenless/tokenless-user-manual-zh.md
 %dir %{_datadir}/tokenless
 %dir %{_datadir}/tokenless/core
+%dir %{_datadir}/tokenless/core/env-check
 %dir %{_datadir}/tokenless/scripts
 %dir %{_datadir}/tokenless/adapters
 %dir %{_datadir}/tokenless/adapters/openclaw
 %dir %{_datadir}/tokenless/adapters/cosh
 %attr(0755,root,root) %{_datadir}/tokenless/scripts/install.sh
+%attr(0644,root,root) %{_datadir}/tokenless/core/env-check/tool-ready-spec.json
+%attr(0755,root,root) %{_datadir}/tokenless/core/env-check/tokenless-env-fix.sh
 %attr(0755,root,root) %{_datadir}/tokenless/adapters/cosh/README.md
 %attr(0755,root,root) %{_datadir}/tokenless/adapters/cosh/tokenless-*.sh
 %{_datadir}/tokenless/adapters/openclaw/*
@@ -129,6 +145,13 @@ fi
 %changelog
 * Mon Apr 27 2026 Shile Zhang <shile.zhang@linux.alibaba.com> - 0.2.0-2
 - Restructure dirs: /usr/share/tokenless/{core,adapters/{openclaw,cosh}}
+- feat(hook): add Tool Ready environment pre-check feature
+  - tokenless-tool-ready.sh: PreToolUse hook scanning tool dependencies
+  - tokenless-env-fix.sh: Config-driven auto-fix engine (11 package managers)
+  - tool-ready-spec.json: Per-tool dependency declarations with fallback strategies
+  - env-check CLI: tokenless env-check --tool/--all/--fix/--checklist
+  - Failure attribution in PostToolUse (5 env error categories)
+  - Backward compatible: string deps auto-convert to object format
 
 * Sun Apr 26 2026 Shile Zhang <shile.zhang@linux.alibaba.com> - 0.2.0-1
 - Bump to v0.2.0 with new features and fixes

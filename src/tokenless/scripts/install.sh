@@ -194,12 +194,11 @@ configure_cosh_hooks() {
 
     # Copy hook scripts - handle both RPM and source installation paths
     if [ -d "$hook_source_dir" ]; then
-        mkdir -p "$COSH_DIR"
+mkdir -p "$COSH_DIR"
         cp "$hook_source_dir"/tokenless-*.sh "$COSH_DIR/" 2>/dev/null || true
         chmod +x "$COSH_DIR"/tokenless-*.sh 2>/dev/null || true
         info "  Copied hook scripts to $COSH_DIR"
     elif [ -d "$SYS_SHARE_DIR/adapters/cosh" ]; then
-        # Fallback to system-wide path for RPM installation
         mkdir -p "$COSH_DIR"
         cp "$SYS_SHARE_DIR/adapters/cosh"/tokenless-*.sh "$COSH_DIR/" 2>/dev/null || true
         chmod +x "$COSH_DIR"/tokenless-*.sh 2>/dev/null || true
@@ -219,6 +218,19 @@ configure_cosh_hooks() {
             .hooks.PostToolUse = (.hooks.PostToolUse // [] | map(select(.hooks // [] | map(.command // "") | join("") | contains("tokenless") | not))) |
             .hooks.BeforeModel = (.hooks.BeforeModel // [] | map(select(.hooks // [] | map(.command // "") | join("") | contains("tokenless") | not))) |
             .hooks = (.hooks // {}) |
+            .hooks.PreToolUse = .hooks.PreToolUse + [
+                {
+                    "matcher": "",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "'"$COSH_DIR"'/tokenless-tool-ready.sh",
+                            "name": "tokenless-tool-ready",
+                            "timeout": 3000
+                        }
+                    ]
+                }
+            ] |
             .hooks.PreToolUse = .hooks.PreToolUse + [
                 {
                     "matcher": "Shell",

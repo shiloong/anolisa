@@ -1,0 +1,74 @@
+{
+  "_comment": "Tool Ready dependency specification. Each dep can be a string (backward compat, defaults to rpm) or an object with binary/version/package/manager/fallback fields.",
+  "Shell": {
+    "required": [
+      { "binary": "jq", "package": "jq", "manager": "apt" },
+      { "binary": "bash", "package": "bash", "manager": "apt" }
+    ],
+    "recommended": [
+      { "binary": "rtk", "version": ">=0.35", "package": "rtk", "manager": "cargo",
+        "fallback": [
+          { "method": "symlink", "binary": "rtk", "source": "/usr/share/tokenless/bin/rtk" },
+          { "method": "cargo_build", "manifest": "/usr/share/tokenless/third_party/rtk/Cargo.toml", "binary": "rtk" }
+        ]
+      },
+      { "binary": "tokenless", "package": "tokenless", "manager": "cargo",
+        "fallback": [
+          { "method": "symlink", "binary": "tokenless", "source": "/usr/share/tokenless/bin/tokenless" },
+          { "method": "cargo_build", "manifest": "/usr/share/tokenless/Cargo.toml", "binary": "tokenless" }
+        ]
+      },
+      { "binary": "toon", "package": "toon", "manager": "cargo",
+        "fallback": [
+          { "method": "symlink", "binary": "toon", "source": "/usr/share/tokenless/bin/toon" },
+          { "method": "cargo_build", "manifest": "/usr/share/tokenless/third_party/toon/Cargo.toml", "binary": "toon", "features": ["cli"] }
+        ]
+      }
+    ],
+    "permissions": [],
+    "network": []
+  },
+  "WebFetch": {
+    "required": [
+      { "binary": "curl", "package": "curl", "manager": "apt" }
+    ],
+    "recommended": [],
+    "permissions": [],
+    "network": ["https_outbound"]
+  },
+  "Read": {
+    "required": [],
+    "recommended": [],
+    "config_files": [],
+    "permissions": ["file_read"],
+    "network": []
+  },
+  "Write": {
+    "required": [],
+    "recommended": [],
+    "config_files": [],
+    "permissions": ["file_write"],
+    "network": []
+  },
+  "Bash": {
+    "required": [
+      { "binary": "bash", "package": "bash", "manager": "apt" }
+    ],
+    "recommended": [
+      { "binary": "jq", "package": "jq", "manager": "apt" },
+      { "binary": "rtk", "version": ">=0.35", "package": "rtk", "manager": "cargo",
+        "fallback": [
+          { "method": "symlink", "binary": "rtk", "source": "/usr/share/tokenless/bin/rtk" }
+        ]
+      },
+      { "binary": "tokenless", "package": "tokenless", "manager": "cargo",
+        "fallback": [
+          { "method": "symlink", "binary": "tokenless", "source": "/usr/share/tokenless/bin/tokenless" }
+        ]
+      }
+    ],
+    "config_files": [],
+    "permissions": ["exec_shell"],
+    "network": []
+  }
+}

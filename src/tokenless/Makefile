@@ -3,13 +3,15 @@
 
 INSTALL_DIR ?= /usr/share/tokenless/bin
 OPENCLAW_DIR ?= /usr/share/tokenless/openclaw
-COPILOT_SHELL_HOOK_DIR ?= /usr/share/tokenless/hooks/copilot-shell
+COPILOT_SHELL_HOOK_DIR ?= /usr/share/tokenless/adapters/cosh
+CORE_ENV_CHECK_DIR ?= /usr/share/tokenless/core/env-check
 RTK_DIR := third_party/rtk
 TOON_DIR := third_party/toon
 
 .PHONY: build build-tokenless build-rtk build-toon install test lint clean \
         openclaw-install openclaw-uninstall \
-        copilot-shell-install copilot-shell-uninstall setup help
+        copilot-shell-install copilot-shell-uninstall core-install setup help \
+        test-hooks
 
 # Default target
 all: build
@@ -39,7 +41,7 @@ install: build
 	@echo "==> Installed tokenless, rtk, and toon to $(INSTALL_DIR)"
 
 # Run tests
-test: test-tokenless test-rtk test-toon
+test: test-tokenless test-rtk test-toon test-hooks
 
 test-tokenless:
 	@echo "==> Testing tokenless..."
@@ -52,6 +54,10 @@ test-rtk:
 test-toon:
 	@echo "==> Testing toon build..."
 	cargo check --manifest-path $(TOON_DIR)/Cargo.toml
+
+test-hooks:
+	@echo "==> Testing copilot-shell hooks..."
+	bash tests/run-all-tests.sh
 
 # Lint
 lint:
@@ -117,6 +123,15 @@ openclaw-uninstall:
 	rm -rf $(OPENCLAW_DIR)
 	@echo "==> OpenClaw plugin removed"
 
+# core env-check installation (shared across all agents)
+core-install:
+	@echo "==> Installing core env-check..."
+	@mkdir -p $(CORE_ENV_CHECK_DIR)
+	cp core/env-check/tool-ready-spec.json $(CORE_ENV_CHECK_DIR)/
+	cp core/env-check/tokenless-env-fix.sh $(CORE_ENV_CHECK_DIR)/
+	chmod +x $(CORE_ENV_CHECK_DIR)/tokenless-env-fix.sh
+	@echo "==> Core env-check installed to $(CORE_ENV_CHECK_DIR)"
+
 # copilot-shell hook management
 copilot-shell-install:
 	@echo "==> Installing copilot-shell hooks..."
@@ -134,7 +149,7 @@ copilot-shell-uninstall:
 	@echo "    Remember to remove the hook configs from your copilot-shell settings.json"
 
 # One-step setup: build + install + openclaw plugin + copilot-shell hook
-setup: install openclaw-install copilot-shell-install
+setup: install core-install openclaw-install copilot-shell-install
 	@echo ""
 	@echo "============================================"
 	@echo "  Token-Less setup complete!"
@@ -174,4 +189,4 @@ help:
 	@echo "Variables:"
 	@echo "  INSTALL_DIR       Binary install path (default: /usr/share/tokenless/bin)"
 	@echo "  OPENCLAW_DIR      OpenClaw plugin path (default: /usr/share/tokenless/openclaw)"
-	@echo "  COPILOT_SHELL_HOOK_DIR  Hook install path (default: /usr/share/tokenless/hooks/copilot-shell)"
+	@echo "  COPILOT_SHELL_HOOK_DIR  Hook install path (default: /usr/share/tokenless/adapters/cosh)"

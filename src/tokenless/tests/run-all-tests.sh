@@ -289,6 +289,96 @@ test_toon_compression() {
     rm -f "$test_db"
 }
 
+test_tool_ready() {
+    log_section "Test 6: Tool Ready (env-check + hook + env-fix + attribution)"
+
+    HOOK_DIR="/usr/share/tokenless/adapters/cosh"
+    CORE_DIR="/usr/share/tokenless/core/env-check"
+    SPEC_FILE="$CORE_DIR/tool-ready-spec.json"
+    FIX_SCRIPT="$CORE_DIR/tokenless-env-fix.sh"
+    READY_SCRIPT="$HOOK_DIR/tokenless-tool-ready.sh"
+    COMPRESS_SCRIPT="$HOOK_DIR/tokenless-compress-response.sh"
+
+    # --- 6.1 Files exist ---
+    log_info "Test 6.1: RPM installation and file existence"
+    [ -f "$SPEC_FILE" ] && log_pass "tool-ready-spec.json exists" || log_fail "tool-ready-spec.json missing"
+    [ -f "$FIX_SCRIPT" ] && [ -x "$FIX_SCRIPT" ] && log_pass "tokenless-env-fix.sh exists+executable" || log_fail "tokenless-env-fix.sh missing or not executable"
+    [ -f "$READY_SCRIPT" ] && [ -x "$READY_SCRIPT" ] && log_pass "tokenless-tool-ready.sh exists+executable" || log_fail "tokenless-tool-ready.sh missing or not executable"
+
+    # --- 6.2 env-check CLI ---
+    log_info "Test 6.2: env-check CLI"
+    local env_out=$(tokenless env-check --tool Shell 2>&1)
+    assert_contains "$env_out" "READY" "env-check --tool Shell returns READY status"
+    assert_contains "$env_out" "jq" "env-check --tool Shell lists jq dependency"
+
+    local checklist_out=$(tokenless env-check --checklist 2>&1)
+    assert_contains "$checklist_out" "Summary:" "env-check --checklist produces summary"
+
+    local all_out=$(tokenless env-check --all 2>&1)
+    assert_contains "$all_out" "Shell:" "env-check --all lists Shell tool"
+
+    # --- 6.3 tool-ready hook: READY (silent exit) ---
+    log_info "Test 6.3: tool-ready hook — READY silent exit"
+    local ready_out=$(echo '{"tool_name":"Shell","tool_input":{"command":"ls"}}' | bash "$READY_SCRIPT" 2>&1)
+    [ -z "$ready_out" ] && log_pass "tool-ready READY produces no output (silent exit)" || log_fail "tool-ready READY produced unexpected output: $ready_out"
+
+    # --- 6.4 tool-ready hook: NOT_READY ---
+    log_info "Test 6.4: tool-ready hook — NOT_READY + Skip retry"
+    local tmp_spec=$(mktemp)
+    cat > "$tmp_spec" << 'EOF'
+{"TestMissing":{"required":[{"binary":"fakebin99","package":"fakebin99","manager":"apt"}],"recommended":[],"permissions":[],"network":[]}}
+EOF
+    local not_ready_out=$(echo '{"tool_name":"TestMissing","tool_input":{"command":"test"}}' | TOKENLESS_TOOL_READY_SPEC="$tmp_spec" bash "$READY_SCRIPT" 2>&1)
+    assert_contains "$not_ready_out" "NOT_READY" "tool-ready hook outputs NOT_READY"
+    assert_contains "$not_ready_out" "Skip retry" "tool-ready hook includes Skip retry guidance"
+    rm -f "$tmp_spec"
+
+    # --- 6.5 env-fix: check ---
+    log_info "Test 6.5: env-fix check"
+    local check_out=$(bash "$FIX_SCRIPT" check 2>&1)
+    assert_contains "$check_out" "Auto-fixable" "env-fix check lists auto-fixable deps"
+
+    # --- 6.6 env-fix: fix-tool (deps already available) ---
+    log_info "Test 6.6: env-fix fix-tool Shell"
+    local fix_out=$(bash "$FIX_SCRIPT" fix-tool Shell 2>&1)
+    assert_contains "$fix_out" "already available" "env-fix fix-tool reports available deps"
+
+    # --- 6.7 env-fix: fallback chain ---
+    log_info "Test 6.7: env-fix fallback chain (rtk with fallback)"
+    local fb_out=$(bash "$FIX_SCRIPT" fix '{"binary":"rtk","version":">=0.35","package":"rtk","manager":"cargo","fallback":[{"method":"symlink","binary":"rtk","source":"/usr/share/tokenless/bin/rtk"}]}' 2>&1)
+    assert_contains "$fb_out" "already available" "env-fix fallback: rtk already available"
+
+    # --- 6.8 Mixed format backward compat ---
+    log_info "Test 6.8: Mixed format backward compatibility"
+    local compat_out=$(echo '["jq","rtk>=0.35",{"binary":"curl","package":"curl","manager":"apt"}]' | jq -c '[.[] | if type == "string" then if test(">=") then {binary: (capture("^(?<b>[^>=<]+)").b), version: (match("[>=<]+[0-9.]+").string), package: (capture("^(?<b>[^>=<]+)").b), manager: "apt"} else {binary: ., package: ., manager: "apt"} end else . end]' 2>&1)
+    if echo "$compat_out" | jq -e '.[1].version' >/dev/null 2>&1; then
+        log_pass "Mixed format string→object conversion works"
+    else log_fail "Mixed format conversion failed: $compat_out"; fi
+
+    # --- 6.9 Attribution: ENV_DEPENDENCY_MISSING ---
+    log_info "Test 6.9: Attribution — ENV_DEPENDENCY_MISSING"
+    # Payload must exceed 200 chars (compress-response skips small responses)
+    local attr_resp='{"exit_code":1,"stdout":"","stderr":"command not found: fakebin99\nDetailed error info about missing dependency and resolution steps for the environment issue.\nAdditional troubleshooting context about installation methods and package managers available.\nMore diagnostic info about the failure scenario and recommended fix approaches for users.\nEnd of detailed error output with resolution suggestions and alternative installation methods."}'
+    local attr_input=$(jq -n --arg r "$attr_resp" '{"tool_name":"Shell","tool_response":$r}')
+    local attr_out=$(echo "$attr_input" | bash "$COMPRESS_SCRIPT" 2>&1)
+    assert_contains "$attr_out" "ENV_DEPENDENCY_MISSING" "Attribution detects command not found"
+    assert_contains "$attr_out" "Skip retry" "Attribution includes Skip retry guidance"
+
+    # --- 6.10 Attribution: ENV_PERMISSION ---
+    log_info "Test 6.10: Attribution — ENV_PERMISSION"
+    attr_resp='{"exit_code":1,"stdout":"","stderr":"Permission denied: /root/secret\nContext about permission error and what went wrong with the file access attempt.\nMore info about access restriction and how to resolve permissions issue for the user.\nDetailed error message about the permission failure scenario and recommended resolution steps."}'
+    attr_input=$(jq -n --arg r "$attr_resp" '{"tool_name":"Bash","tool_response":$r}')
+    attr_out=$(echo "$attr_input" | bash "$COMPRESS_SCRIPT" 2>&1)
+    assert_contains "$attr_out" "ENV_PERMISSION" "Attribution detects Permission denied"
+
+    # --- 6.11 Attribution: ENV_FILE_MISSING ---
+    log_info "Test 6.11: Attribution — ENV_FILE_MISSING"
+    attr_resp='{"exit_code":1,"stdout":"","stderr":"No such file or directory: /tmp/missing\nContext about missing file error and why it happened during tool execution.\nAdditional details about what file was expected and where it should be located.\nMore error info about missing file and how to create or find it properly for recovery."}'
+    attr_input=$(jq -n --arg r "$attr_resp" '{"tool_name":"Bash","tool_response":$r}')
+    attr_out=$(echo "$attr_input" | bash "$COMPRESS_SCRIPT" 2>&1)
+    assert_contains "$attr_out" "ENV_FILE_MISSING" "Attribution detects No such file"
+}
+
 main() {
     echo "============================================"
     echo "  Token-Less Full Test Suite"
@@ -304,6 +394,7 @@ main() {
     test_command_rewriting
     test_stats_system
     test_toon_compression
+    test_tool_ready
 
     echo ""
     echo "============================================"

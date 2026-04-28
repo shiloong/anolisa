@@ -145,19 +145,36 @@ function tryCompressToon(response: any): { toonText: string; savingsPct: number 
   }
 }
 
+function tryEnvCheck(toolName: string): { status: string; diagnostic: string } | null {
+  try {
+    const result = execFileSync("tokenless", ["env-check", "--tool", toolName], {
+      encoding: "utf-8",
+      timeout: 3000,
+    }).trim();
+    const statusMatch = result.match(/^(\w+):\s+(READY|PARTIAL|NOT READY)/m);
+    if (!statusMatch) return null;
+    const status = statusMatch[2].replace(" ", "_");
+    if (status === "READY") return { status, diagnostic: "" };
+    return { status, diagnostic: `[tokenless env-check] ${result}` };
+  } catch {
+    return null;
+  }
+}
+
 // ---- Plugin entry point -------------------------------------------------------
 
 export default {
   id: "tokenless-openclaw",
   name: "Token-Less",
   version: "1.0.0",
-  description: "Unified RTK command rewriting + schema/response/TOON compression",
+  description: "Unified RTK command rewriting + schema/response/TOON compression + Tool Ready",
   register(api: any) {
   const pluginConfig = api.config ?? {};
   const rtkEnabled = pluginConfig.rtk_enabled !== false;
   const responseCompressionEnabled = pluginConfig.response_compression_enabled !== false;
   const schemaCompressionEnabled = pluginConfig.schema_compression_enabled !== false;
   const toonCompressionEnabled = pluginConfig.toon_compression_enabled !== false;
+  const toolReadyEnabled = pluginConfig.tool_ready_enabled !== false;
   const skipTools: Set<string> = new Set((pluginConfig.skip_tools ?? ["Read", "read_file", "Glob", "list_directory", "NotebookRead"]).map((t: string) => t.toLowerCase()));
   const verbose = pluginConfig.verbose !== false;
 
@@ -174,7 +191,24 @@ export default {
     },
   );
 
-  // ---- 1. RTK command rewriting (before_tool_call) ----------------------------
+  // ---- 1. Tool Ready environment pre-check (before_tool_call) -----------------
+
+  if (toolReadyEnabled && checkTokenless()) {
+    api.on(
+      "before_tool_call",
+      (event: { toolName: string; params: Record<string, unknown> }, ctx: { sessionId?: string; sessionKey?: string; agentId?: string; toolCallId?: string; runId?: string }) => {
+        const result = tryEnvCheck(event.toolName);
+        if (!result || result.status === "READY") return;
+        if (verbose) {
+          console.log(`[tokenless/tool-ready] ${event.toolName}: ${result.status}`);
+        }
+        return { contextPrefix: result.diagnostic };
+      },
+      { priority: 5 },
+    );
+  }
+
+  // ---- 2. RTK command rewriting (before_tool_call) ----------------------------
 
   if (rtkEnabled && checkRtk()) {
     api.on(
@@ -203,7 +237,7 @@ export default {
     );
   }
 
-  // ---- 2. Schema compression (before_tool_register) ---------------------------
+  // ---- 3. Schema compression (before_tool_register) ---------------------------
 
   if (schemaCompressionEnabled && checkTokenless()) {
     api.on(
@@ -226,7 +260,7 @@ export default {
     );
   }
 
-  // ---- 3. Response / TOON compression (tool_result_persist) -------------------
+  // ---- 4. Response / TOON compression (tool_result_persist) -------------------
   // Pipeline: Response Compression → TOON (sequential, not mutually exclusive)
   //   1. Strip debug/nulls/empty, truncate long strings/arrays
   //   2. If result is still valid JSON and TOON is enabled, encode to TOON format
@@ -332,6 +366,7 @@ export default {
     checkToon(); // populate toonAvailable cache before logging
     const features = [
       rtkEnabled && rtkAvailable ? "rtk-rewrite" : null,
+      toolReadyEnabled && tokenlessAvailable ? "tool-ready" : null,
       schemaCompressionEnabled && tokenlessAvailable ? "schema-compression" : null,
       responseCompressionEnabled && tokenlessAvailable ? "response-compression" : null,
       toonCompressionEnabled && toonAvailable ? "toon-compression" : null,

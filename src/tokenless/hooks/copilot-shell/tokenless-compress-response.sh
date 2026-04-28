@@ -1,20 +1,27 @@
 #!/usr/bin/env bash
-# tokenless-hook-version: 7
+# tokenless-hook-version: 8
 # Token-Less copilot-shell hook — compresses tool call responses,
+# performs environment attribution analysis on failures,
 # then optionally re-encodes to TOON format for additional token savings.
 #
-# Pipeline: Response Compression → TOON Encoding (if JSON)
-#   1. Strip debug fields, nulls, empty values; truncate long strings/arrays
-#   2. If the compressed result is still valid JSON, encode to TOON format
-#   3. Stats are recorded automatically by tokenless compress-response.
+# Pipeline: Failure Attribution → Response Compression → TOON Encoding
+#   1. If tool_response contains errors, classify as environment vs logic issue
+#      and inject "Skip retry" guidance for LLM
+#   2. Strip debug fields, nulls, empty values; truncate long strings/arrays
+#   3. If the compressed result is still valid JSON, encode to TOON format
+#   4. Combine attribution + compressed content in additionalContext
 #
+# Stats are recorded automatically by tokenless compress-response.
 # Requires: tokenless, jq, toon (optional — TOON step disabled if missing)
 #
 # Hook event: PostToolUse
+#
+# Design: fail-open — if compression fails or dependencies are missing,
+# the original response passes through unchanged.
 
 set -euo pipefail
 
-# --- Dependency checks (fail-open) ---
+# --- Dependency checks (fail-open: never block tool responses) ---
 
 if ! command -v jq &>/dev/null; then
   echo "[tokenless] WARNING: jq is not installed. Response compression hook disabled." >&2
@@ -48,13 +55,14 @@ if [ "$TOOL_NAME" != "unknown" ] && echo "$SKIP_TOOLS" | grep -qw "$TOOL_NAME"; 
   exit 0
 fi
 
-# --- Extract tool_response ---
+# --- Extract tool_response (fail-open) ---
 
 TOOL_RESPONSE_RAW=$(echo "$INPUT" | jq -c '.tool_response // empty' 2>/dev/null || echo '')
 
 if [ -z "$TOOL_RESPONSE_RAW" ] || [ "$TOOL_RESPONSE_RAW" = "null" ] || [ "$TOOL_RESPONSE_RAW" = "{}" ]; then
   exit 0
 fi
+
 # --- Skip small responses ---
 
 RESPONSE_LEN=${#TOOL_RESPONSE_RAW}
@@ -104,6 +112,63 @@ fi
 RESPONSE_LEN=${#TOOL_RESPONSE}
 if [ "$RESPONSE_LEN" -lt 200 ]; then
   exit 0
+fi
+
+# --- Environment attribution analysis ---
+# Classify tool execution failures as environment issues vs logic errors.
+# Injects "Skip retry" guidance when the failure is environment-related.
+
+ENV_ATTRIBUTION=""
+ATTR_CATEGORY=""
+ATTR_FIX_HINT=""
+
+# Use unwrapped TOOL_RESPONSE for error parsing
+ATTR_INPUT="$TOOL_RESPONSE"
+
+# Unwrap if still a JSON string
+FIRST_ATTR_CHAR=$(echo "$ATTR_INPUT" | head -c 1)
+if [ "$FIRST_ATTR_CHAR" = '"' ]; then
+  ATTR_INPUT=$(echo "$ATTR_INPUT" | jq -r '.' 2>/dev/null || echo "$ATTR_INPUT")
+fi
+
+# Check for error indicators in the parsed response
+EXIT_CODE=$(echo "$ATTR_INPUT" | jq -r '.exit_code // empty' 2>/dev/null || echo '')
+STDERR_TEXT=$(echo "$ATTR_INPUT" | jq -r '.stderr // empty' 2>/dev/null || echo '')
+ERROR_FIELD=$(echo "$ATTR_INPUT" | jq -r '.error // empty' 2>/dev/null || echo '')
+
+# Combine all error text for pattern matching
+ERROR_TEXT="${STDERR_TEXT}${ERROR_FIELD}"
+
+if [ -n "$ERROR_TEXT" ] || [ "$EXIT_CODE" = "1" ] || [ "$EXIT_CODE" = "2" ]; then
+  if [ -n "$ERROR_TEXT" ]; then
+    case "$ERROR_TEXT" in
+      *"command not found"*|*"not installed"*|*"which: no"*|*"No command '*'"*)
+        ATTR_CATEGORY="ENV_DEPENDENCY_MISSING"
+        MISSING_CMD=$(echo "$ERROR_TEXT" | grep -oP '(command not found: |which: no )\S+' | head -1 | sed 's/command not found: //;s/which: no //' || echo "unknown")
+        ATTR_FIX_HINT="Install missing dependency: ${MISSING_CMD}"
+        ;;
+      *"Permission denied"*|*"permission denied"*|*"Access denied"*)
+        ATTR_CATEGORY="ENV_PERMISSION"
+        ATTR_FIX_HINT="Check file/dir permissions or run with appropriate access"
+        ;;
+      *"No such file or directory"*|*"cannot find"*|*"does not exist"*|*"ENOENT"*)
+        ATTR_CATEGORY="ENV_FILE_MISSING"
+        ATTR_FIX_HINT="Create or locate the required file/directory"
+        ;;
+      *"Connection refused"*|*"ECONNREFUSED"*|*"Connection timed out"*|*"ETIMEDOUT"*|*"curl: (7)"*|*"curl: (6)"*|*"network is unreachable"*)
+        ATTR_CATEGORY="ENV_NETWORK"
+        ATTR_FIX_HINT="Check network connectivity and DNS resolution"
+        ;;
+      *"ModuleNotFoundError"*|*"cannot find module"*|*"ImportError"*|*"npm ERR! 404"*)
+        ATTR_CATEGORY="ENV_PACKAGE_MISSING"
+        ATTR_FIX_HINT="Install the required module/package"
+        ;;
+    esac
+  fi
+
+  if [ -n "$ATTR_CATEGORY" ]; then
+    ENV_ATTRIBUTION="[tokenless env-attribution] ${TOOL_NAME} tool failed: ${ATTR_CATEGORY} (${ATTR_FIX_HINT}). Skip retry — this is an environment issue, not a logic error."
+  fi
 fi
 
 # --- Step 1: Response Compression ---
@@ -169,9 +234,13 @@ BEFORE_CHARS=$RESPONSE_LEN
 BEFORE_TOKENS=$(( (BEFORE_CHARS + 3) / 4 ))
 AFTER_TOKENS=$(( (AFTER_CHARS + 3) / 4 ))
 
+SAVINGS_PCT=0
+if [ "$BEFORE_CHARS" -gt 0 ]; then
+  SAVINGS_PCT=$(( (BEFORE_CHARS - AFTER_CHARS) * 100 / BEFORE_CHARS ))
+fi
+
 # --- Record statistics ---
 
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // "unknown"' 2>/dev/null || echo 'unknown')
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null || echo '')
 TOOL_USE_ID=$(echo "$INPUT" | jq -r '.tool_use_id // empty' 2>/dev/null || echo '')
 AGENT_ID="copilot-shell"
@@ -197,15 +266,21 @@ if command -v tokenless &>/dev/null; then
   "${RECORD_CMD[@]}" 2>/dev/null || true
 fi
 
-# --- Build copilot-shell response ---
+# --- Build final additionalContext ---
+# Combine attribution (if present) with compression/TOON content
 
-SAVINGS_PCT=0
-if [ "$BEFORE_CHARS" -gt 0 ]; then
-  SAVINGS_PCT=$(( (BEFORE_CHARS - AFTER_CHARS) * 100 / BEFORE_CHARS ))
+FINAL_CONTEXT=""
+if [ -n "$ENV_ATTRIBUTION" ]; then
+  FINAL_CONTEXT="${ENV_ATTRIBUTION}\n\n"
 fi
+FINAL_CONTEXT="${FINAL_CONTEXT}[tokenless] Tool response from ${TOOL_NAME} ${SAVINGS_LABEL} (${SAVINGS_PCT}% token savings)."
+if [ "$SAVINGS_LABEL" = "response compressed + TOON encoded" ]; then
+  FINAL_CONTEXT="${FINAL_CONTEXT}\nTOON is a compact notation for structured data. Parse it as key-value pairs and tabular data.\n"
+fi
+FINAL_CONTEXT="${FINAL_CONTEXT}\n${FINAL_OUTPUT}"
 
 jq -n \
-  --arg context "$FINAL_OUTPUT" \
+  --arg context "$FINAL_CONTEXT" \
   --arg tool "$TOOL_NAME" \
   --arg savings "$SAVINGS_PCT" \
   --arg label "$SAVINGS_LABEL" \
@@ -213,15 +288,7 @@ jq -n \
     "suppressOutput": true,
     "hookSpecificOutput": {
       "hookEventName": "PostToolUse",
-      "additionalContext": (
-        "[tokenless] Tool response from " + $tool + " " + $label + " (" + $savings + "% token savings).\n" +
-        (if $label == "response compressed + TOON encoded" then
-          "TOON is a compact notation for structured data. Parse it as key-value pairs and tabular data.\n\n"
-        else
-          ""
-        end) +
-        $context
-      )
+      "additionalContext": $context
     }
   }' || {
   echo "[tokenless] WARNING: failed to build hook response JSON. Passing through unchanged." >&2

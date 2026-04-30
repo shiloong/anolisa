@@ -133,7 +133,7 @@ Then add the hook configs to your `~/.copilot-shell/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "~/.local/share/tokenless/hooks/copilot-shell/tokenless-rewrite.sh",
+            "command": "~/.local/share/tokenless/adapters/cosh/tokenless-rewrite.sh",
             "name": "tokenless-rewrite",
             "timeout": 5000
           }
@@ -145,7 +145,7 @@ Then add the hook configs to your `~/.copilot-shell/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "~/.local/share/tokenless/hooks/copilot-shell/tokenless-compress-response.sh",
+            "command": "~/.local/share/tokenless/adapters/cosh/tokenless-compress-response.sh",
             "name": "tokenless-compress-response",
             "timeout": 10000
           }
@@ -157,7 +157,7 @@ Then add the hook configs to your `~/.copilot-shell/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "~/.local/share/tokenless/hooks/copilot-shell/tokenless-compress-schema.sh",
+            "command": "~/.local/share/tokenless/adapters/cosh/tokenless-compress-schema.sh",
             "name": "tokenless-compress-schema",
             "timeout": 10000
           }

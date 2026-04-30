@@ -37,8 +37,8 @@ The package includes:
 - rtk: High-performance CLI proxy for command rewriting (Apache-2.0 licensed)
 - toon: JSON to TOON format encoder/decoder for LLM token optimization
 
-Note: OpenClaw plugin and copilot-shell hooks are available in the source tree
-at /usr/share/doc/tokenless/ for manual configuration.
+Note: OpenClaw plugin and copilot-shell hooks are available under
+/usr/share/tokenless/adapters/ for manual configuration.
 
 %prep
 %setup -q -n tokenless
@@ -85,18 +85,18 @@ install -m 0644 docs/tokenless-user-manual-zh.md %{buildroot}%{_docdir}/tokenles
 install -m 0644 docs/response-compression.md %{buildroot}%{_docdir}/tokenless/
 install -m 0644 LICENSE %{buildroot}%{_docdir}/tokenless/
 
-# Install source files for reference (openclaw, hooks, scripts)
-mkdir -p %{buildroot}%{_datadir}/tokenless/openclaw
-mkdir -p %{buildroot}%{_datadir}/tokenless/hooks/copilot-shell
+# Install adapters (agent-specific plugins/hooks)
+mkdir -p %{buildroot}%{_datadir}/tokenless/adapters/openclaw
+mkdir -p %{buildroot}%{_datadir}/tokenless/adapters/cosh
 mkdir -p %{buildroot}%{_datadir}/tokenless/scripts
 
-install -m 0644 openclaw/index.ts %{buildroot}%{_datadir}/tokenless/openclaw/
-install -m 0644 openclaw/openclaw.plugin.json %{buildroot}%{_datadir}/tokenless/openclaw/
-install -m 0644 openclaw/package.json %{buildroot}%{_datadir}/tokenless/openclaw/
-install -m 0644 openclaw/README.md %{buildroot}%{_datadir}/tokenless/openclaw/
+install -m 0644 openclaw/index.ts %{buildroot}%{_datadir}/tokenless/adapters/openclaw/
+install -m 0644 openclaw/openclaw.plugin.json %{buildroot}%{_datadir}/tokenless/adapters/openclaw/
+install -m 0644 openclaw/package.json %{buildroot}%{_datadir}/tokenless/adapters/openclaw/
+install -m 0644 openclaw/README.md %{buildroot}%{_datadir}/tokenless/adapters/openclaw/
 
-install -m 0755 hooks/copilot-shell/tokenless-*.sh %{buildroot}%{_datadir}/tokenless/hooks/copilot-shell/
-install -m 0644 hooks/copilot-shell/README.md %{buildroot}%{_datadir}/tokenless/hooks/copilot-shell/
+install -m 0755 hooks/copilot-shell/tokenless-*.sh %{buildroot}%{_datadir}/tokenless/adapters/cosh/
+install -m 0644 hooks/copilot-shell/README.md %{buildroot}%{_datadir}/tokenless/adapters/cosh/
 
 install -m 0755 scripts/install.sh %{buildroot}%{_datadir}/tokenless/scripts/
 
@@ -112,13 +112,13 @@ install -m 0755 scripts/install.sh %{buildroot}%{_datadir}/tokenless/scripts/
 %doc %{_docdir}/tokenless/tokenless-user-manual-zh.md
 %dir %{_datadir}/tokenless
 %dir %{_datadir}/tokenless/scripts
-%dir %{_datadir}/tokenless/hooks
-%dir %{_datadir}/tokenless/hooks/copilot-shell
-%dir %{_datadir}/tokenless/openclaw
+%dir %{_datadir}/tokenless/adapters
+%dir %{_datadir}/tokenless/adapters/openclaw
+%dir %{_datadir}/tokenless/adapters/cosh
 %attr(0755,root,root) %{_datadir}/tokenless/scripts/install.sh
-%attr(0755,root,root) %{_datadir}/tokenless/hooks/copilot-shell/tokenless-*.sh
-%attr(0644,root,root) %{_datadir}/tokenless/hooks/copilot-shell/README.md
-%{_datadir}/tokenless/openclaw/*
+%attr(0755,root,root) %{_datadir}/tokenless/adapters/cosh/tokenless-*.sh
+%attr(0644,root,root) %{_datadir}/tokenless/adapters/cosh/README.md
+%{_datadir}/tokenless/adapters/openclaw/*
 
 %post
 if [ -x %{_datadir}/tokenless/scripts/install.sh ]; then

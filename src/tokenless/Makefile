@@ -3,8 +3,8 @@
 
 SHARE_DIR ?= $(HOME)/.local/share/tokenless
 BIN_DIR ?= $(HOME)/.local/bin
-OPENCLAW_DIR ?= $(SHARE_DIR)/openclaw
-COPILOT_SHELL_HOOK_DIR ?= $(SHARE_DIR)/hooks/copilot-shell
+OPENCLAW_DIR ?= $(SHARE_DIR)/adapters/openclaw
+COPILOT_SHELL_HOOK_DIR ?= $(SHARE_DIR)/adapters/cosh
 RTK_DIR := third_party/rtk
 TOON_DIR := third_party/toon
 
@@ -175,5 +175,5 @@ help:
 	@echo "Variables:"
 	@echo "  SHARE_DIR         Data install root (default: ~/.local/share/tokenless)"
 	@echo "  BIN_DIR           Binary install path (default: ~/.local/bin)"
-	@echo "  OPENCLAW_DIR      OpenClaw plugin path (default: ~/.local/share/tokenless/openclaw)"
-	@echo "  COPILOT_SHELL_HOOK_DIR  Hook install path (default: ~/.local/share/tokenless/hooks/copilot-shell)"
+	@echo "  OPENCLAW_DIR      OpenClaw plugin path (default: ~/.local/share/tokenless/adapters/openclaw)"
+	@echo "  COPILOT_SHELL_HOOK_DIR  Hook install path (default: ~/.local/share/tokenless/adapters/cosh)"

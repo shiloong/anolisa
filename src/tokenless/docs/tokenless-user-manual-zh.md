@@ -332,10 +332,10 @@ make install BIN_DIR=/usr/local/bin
 make openclaw-install
 
 # 自定义插件路径
-make openclaw-install OPENCLAW_DIR=/usr/share/tokenless/openclaw
+make openclaw-install OPENCLAW_DIR=/usr/share/tokenless/adapters/openclaw
 
 # 手动安装
-cp -r openclaw/ /usr/share/tokenless/openclaw/
+cp -r openclaw/ /usr/share/tokenless/adapters/openclaw/
 ```
 
 #### 4.4.4 部署 Copilot Shell Hook

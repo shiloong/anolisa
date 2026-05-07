@@ -49,27 +49,35 @@ pub async fn run_daemon(config: DaemonConfig) -> anyhow::Result<()> {
     // 3. For non-BtrfsLoop backends, ensure data directories upfront.
     //    BtrfsLoop bootstrap is deferred (lazy) until the first write operation.
     if detect_result.backend.backend_type() != ws_ckpt_common::backend::BackendType::BtrfsLoop {
-        let data_root = detect_result.backend.data_root();
-        tokio::fs::create_dir_all(data_root)
-            .await
-            .with_context(|| format!("Failed to create data root: {:?}", data_root))?;
-        let snapshots_root = detect_result.backend.snapshots_root();
-        tokio::fs::create_dir_all(snapshots_root)
-            .await
-            .with_context(|| format!("Failed to create snapshots root: {:?}", snapshots_root))?;
+        let backend = &detect_result.backend;
+        let dirs = [backend.data_root(), backend.snapshots_root()];
+
+        for dir in dirs {
+            tokio::fs::create_dir_all(dir)
+                .await
+                .with_context(|| format!("Failed to ensure directory exists: {:?}", dir))?;
+        }
+
         info!(
             "Ensured data directories for {} backend",
-            detect_result.backend.backend_type()
+            backend.backend_type()
         );
     }
 
     // 4. Rebuild state from disk
+    // For BtrfsLoop, ensure the filesystem is mounted BEFORE rebuild_from_disk,
+    // because rebuild_from_disk scans snapshots_root which lives on the mounted filesystem.
+    if detect_result.backend.backend_type() == ws_ckpt_common::backend::BackendType::BtrfsLoop {
+        if !bootstrap::is_mounted(&config.mount_path.to_string_lossy()).await? {
+            crate::bootstrap::bootstrap(&config).await?;
+        }
+    }
     let state = Arc::new(DaemonState::rebuild_from_disk(config, detect_result.backend).await?);
 
-    // 3.1. Re-establish symlinks lost during daemon restart
+    // 5. Re-establish symlinks lost during daemon restart
     bootstrap::ensure_symlinks(&state).await;
 
-    // 3.5. Apply seccomp-bpf syscall filter (after bootstrap, before listener)
+    //  6. Apply seccomp-bpf syscall filter (after bootstrap, before listener)
     if let Err(e) = seccomp::apply_seccomp_filter() {
         tracing::warn!(
             "Failed to apply seccomp filter: {:#}. Continuing without syscall filtering.",
@@ -77,22 +85,22 @@ pub async fn run_daemon(config: DaemonConfig) -> anyhow::Result<()> {
         );
     }
 
-    // 3.6. Start background scheduler
+    // 7. Start background scheduler
     scheduler::start_scheduler(state.clone());
 
-    // 4. Create cancellation token
+    // 8.1. Create cancellation token
     let cancel = CancellationToken::new();
 
-    // 5. Register signal handlers
+    // 8.2. Register signal handlers
     let mut sigterm = signal(SignalKind::terminate())?;
 
-    // 6. Spawn listener
+    // 9. Spawn listener
     let listener_cancel = cancel.clone();
     let listener_state = Arc::clone(&state);
     let listener_handle =
         tokio::spawn(async move { listener::run_listener(listener_state, listener_cancel).await });
 
-    // 7. Wait for shutdown signal
+    // 10. Wait for shutdown signal
     tokio::select! {
         _ = sigterm.recv() => {
             info!("Received SIGTERM, shutting down...");
@@ -104,12 +112,12 @@ pub async fn run_daemon(config: DaemonConfig) -> anyhow::Result<()> {
 
     cancel.cancel();
 
-    // 8. Wait for listener to finish
+    // 11. Wait for listener to finish
     if let Err(e) = listener_handle.await {
         tracing::error!("Listener task panicked: {}", e);
     }
 
-    // 9. Flush all workspace index.json files
+    // 12. Flush all workspace index.json files
     info!("Flushing workspace indexes...");
     let all_ws = state.all_workspaces();
     for ws in &all_ws {

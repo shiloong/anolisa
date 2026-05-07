@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use anyhow::Context;
 use tracing::info;
 
 use ws_ckpt_common::backend::{BackendType, StorageBackend};
@@ -63,7 +64,7 @@ async fn auto_detect(_config: &DaemonConfig) -> anyhow::Result<BackendType> {
     //   We check if there's a btrfs partition available at all.
 
     // Level 2: Is there an already-mounted btrfs partition?
-    if let Some(mount_info) = btrfs_common::find_available_btrfs_partition().await {
+    if let Ok(mount_info) = btrfs_common::find_available_btrfs_partition().await {
         info!(
             "Auto-detect: found mounted btrfs partition at {} (device: {})",
             mount_info.mount_point, mount_info.device
@@ -93,12 +94,10 @@ async fn create_backend(
             // Find the best btrfs partition to use
             let mount_info = btrfs_common::find_available_btrfs_partition()
                 .await
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Backend type 'btrfs-base' selected but no mounted btrfs partition found. \
-                         Please mount a btrfs partition or switch to 'btrfs-loop' backend."
-                    )
-                })?;
+                .context(
+                    "Backend type 'btrfs-base' selected but no mounted btrfs partition found. \
+                     Please mount a btrfs partition or switch to 'btrfs-loop' backend.",
+                )?;
 
             // Determine scenario: daemon-level default is CrossDisk.
             // The actual scenario (InPlace vs CrossDisk) is refined per-workspace

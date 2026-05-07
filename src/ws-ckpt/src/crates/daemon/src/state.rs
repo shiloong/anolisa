@@ -188,7 +188,7 @@ impl DaemonState {
         // BtrfsLoop both point at the correct on-disk location.
         let snapshots_dir = state.backend.snapshots_root().to_path_buf();
 
-        let read_dir = match std::fs::read_dir(&snapshots_dir) {
+        let mut read_dir = match tokio::fs::read_dir(&snapshots_dir).await {
             Ok(rd) => rd,
             Err(e) => {
                 warn!(
@@ -199,73 +199,85 @@ impl DaemonState {
             }
         };
 
-        for entry in read_dir {
-            let entry = match entry {
-                Ok(e) => e,
+        while let Some(entry) = read_dir.next_entry().await? {
+            let path = entry.path();
+            let file_type = match entry.file_type().await {
+                Ok(ft) => ft,
                 Err(e) => {
-                    warn!("Error reading directory entry: {}", e);
+                    warn!("Error reading file type for {:?}: {}", path, e);
                     continue;
                 }
             };
-
-            let path = entry.path();
-            if !path.is_dir() {
+            if !file_type.is_dir() {
                 continue;
             }
 
-            let index_path = path.join(INDEX_FILE);
-            let index_content = match std::fs::read_to_string(&index_path) {
-                Ok(c) => c,
-                Err(e) => {
-                    warn!("Failed to read {:?}: {}", index_path, e);
-                    continue;
-                }
-            };
-
-            let index: SnapshotIndex = match serde_json::from_str(&index_content) {
-                Ok(idx) => idx,
-                Err(e) => {
-                    warn!("Failed to parse {:?}: {}", index_path, e);
-                    continue;
-                }
-            };
-
-            let ws_id = entry.file_name().to_string_lossy().to_string();
-            let workspace_path = index.workspace_path.clone();
-
-            // If loaded index has no snapshots, try rebuilding from filesystem
-            let index = if index.snapshots.is_empty() {
-                match index_store::rebuild_from_fs(&path, workspace_path.clone()).await {
-                    Ok(rebuilt) if !rebuilt.snapshots.is_empty() => {
-                        info!(
-                            "Rebuilt {} snapshot(s) from filesystem for {}",
-                            rebuilt.snapshots.len(),
-                            ws_id
-                        );
-                        // Persist rebuilt index
-                        let _ = index_store::save(&path, &rebuilt).await;
-                        rebuilt
-                    }
-                    _ => index,
-                }
-            } else {
-                index
-            };
-
-            info!("Restored workspace {} -> {:?}", ws_id, workspace_path);
-            // Start file watcher for write-lock detection
-            match WorkspaceWatcher::start(&workspace_path) {
-                Ok(watcher) => {
-                    state.register_watcher(ws_id.clone(), watcher);
-                }
-                Err(e) => {
-                    warn!("Failed to start watcher for {}: {}", ws_id, e);
-                }
+            if let Err(e) = Self::rebuild_single_workspace(&state, &path).await {
+                warn!("Failed to rebuild workspace at {:?}: {}", path, e);
             }
-            state.register_workspace(ws_id, workspace_path, index);
         }
 
         Ok(state)
+    }
+
+    async fn rebuild_single_workspace(state: &Self, path: &Path) -> anyhow::Result<()> {
+        let ws_id = path
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("Invalid path: missing file name"))?
+            .to_string_lossy()
+            .to_string();
+
+        let index_path = path.join(INDEX_FILE);
+        let index_content = match tokio::fs::read_to_string(&index_path).await {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("Failed to read {:?}: {}", index_path, e);
+                return Ok(());
+            }
+        };
+
+        let index: SnapshotIndex = match serde_json::from_str(&index_content) {
+            Ok(idx) => idx,
+            Err(e) => {
+                warn!("Failed to parse {:?}: {}", index_path, e);
+                return Ok(());
+            }
+        };
+
+        let workspace_path = index.workspace_path.clone();
+
+        // If loaded index has no snapshots, try rebuilding from filesystem
+        let index = if index.snapshots.is_empty() {
+            match index_store::rebuild_from_fs(path, workspace_path.clone()).await {
+                Ok(rebuilt) if !rebuilt.snapshots.is_empty() => {
+                    info!(
+                        "Rebuilt {} snapshot(s) from filesystem for {}",
+                        rebuilt.snapshots.len(),
+                        ws_id
+                    );
+                    // Persist rebuilt index
+                    let _ = index_store::save(path, &rebuilt).await;
+                    rebuilt
+                }
+                _ => index,
+            }
+        } else {
+            index
+        };
+
+        info!("Restored workspace {} -> {:?}", ws_id, workspace_path);
+        // Start file watcher for write-lock detection
+        match WorkspaceWatcher::start(&workspace_path) {
+            Ok(watcher) => {
+                state.register_watcher(ws_id.clone(), watcher);
+            }
+            Err(e) => {
+                warn!("Failed to start watcher for {}: {}", ws_id, e);
+            }
+        }
+        state.register_workspace(ws_id, workspace_path, index);
+
+        Ok(())
     }
 
     pub fn all_workspaces(&self) -> Vec<Arc<RwLock<WorkspaceState>>> {

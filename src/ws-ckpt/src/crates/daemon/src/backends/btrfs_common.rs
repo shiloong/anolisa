@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
+use tokio::fs::File;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tracing::{error, info, warn};
 use ws_ckpt_common::{ChangeType, DiffEntry};
@@ -462,19 +464,44 @@ pub struct MountInfo {
 }
 
 /// Find the first available btrfs partition by scanning /proc/mounts.
-/// Simple implementation; Task 6 will refine the detection logic.
-pub async fn find_available_btrfs_partition() -> Option<MountInfo> {
-    let mounts = tokio::fs::read_to_string("/proc/mounts").await.ok()?;
-    for line in mounts.lines() {
+/// Skips read-only mounts and subvolume mounts (prefers physical /dev/ devices).
+/// Returns an error if no writable physical btrfs partition is found.
+pub async fn find_available_btrfs_partition() -> Result<MountInfo> {
+    let file = File::open("/proc/mounts")
+        .await
+        .context("Failed to open /proc/mounts")?;
+    let mut lines = BufReader::new(file).lines();
+
+    let mut found_ro = false;
+
+    while let Some(line) = lines.next_line().await? {
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() >= 3 && parts[2] == "btrfs" {
-            return Some(MountInfo {
+            // Skip read-only mounts
+            if parts.len() >= 4 && parts[3].split(',').any(|opt| opt == "ro") {
+                found_ro = true;
+                continue;
+            }
+            // Skip subvolume mounts: prefer physical device partitions (/dev/xxx)
+            if !parts[0].starts_with("/dev/") {
+                continue;
+            }
+            // Skip loop devices (created by BtrfsLoop backend)
+            if parts[0].starts_with("/dev/loop") {
+                continue;
+            }
+            return Ok(MountInfo {
                 device: parts[0].to_string(),
                 mount_point: parts[1].to_string(),
             });
         }
     }
-    None
+
+    if found_ro {
+        bail!("Found btrfs partition(s), but all are read-only")
+    } else {
+        bail!("No available btrfs partition found in /proc/mounts")
+    }
 }
 
 /// Warmup snapshot metadata cache to speed up subsequent btrfs operations.

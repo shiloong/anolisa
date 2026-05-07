@@ -1,4 +1,7 @@
 use anyhow::{bail, Context};
+use std::path::{Path, PathBuf};
+use tokio::fs::File;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tracing::{info, warn};
 
@@ -163,9 +166,15 @@ pub async fn ensure_symlinks(state: &DaemonState) {
                     "symlink {} points to {:?}, expected {:?}; rebuilding",
                     ws_path, target, expected_subvol_path
                 );
-                let _ = tokio::fs::remove_file(&ws_path).await;
-                if let Err(e) = tokio::fs::symlink(&expected_subvol_path, &ws_path).await {
-                    warn!("failed to recreate symlink for {}: {}", ws_path, e);
+                let tmp_path = format!("{}.tmp", ws_path);
+                if let Err(e) = tokio::fs::symlink(&expected_subvol_path, &tmp_path).await {
+                    warn!("failed to create temp symlink for {}: {}", ws_path, e);
+                } else if let Err(e) = tokio::fs::rename(&tmp_path, &ws_path).await {
+                    warn!(
+                        "failed to atomically replace symlink for {}: {}",
+                        ws_path, e
+                    );
+                    let _ = tokio::fs::remove_file(&tmp_path).await;
                 } else {
                     info!("rebuilt symlink for {}", ws_path);
                 }
@@ -173,9 +182,15 @@ pub async fn ensure_symlinks(state: &DaemonState) {
             Err(_) => {
                 // Symlink doesn't exist or path is not a symlink; rebuild
                 warn!("symlink missing or invalid for {}; rebuilding", ws_path);
-                let _ = tokio::fs::remove_file(&ws_path).await;
-                if let Err(e) = tokio::fs::symlink(&expected_subvol_path, &ws_path).await {
-                    warn!("failed to create symlink for {}: {}", ws_path, e);
+                let tmp_path = format!("{}.tmp", ws_path);
+                if let Err(e) = tokio::fs::symlink(&expected_subvol_path, &tmp_path).await {
+                    warn!("failed to create temp symlink for {}: {}", ws_path, e);
+                } else if let Err(e) = tokio::fs::rename(&tmp_path, &ws_path).await {
+                    warn!(
+                        "failed to atomically replace symlink for {}: {}",
+                        ws_path, e
+                    );
+                    let _ = tokio::fs::remove_file(&tmp_path).await;
                 } else {
                     info!("created symlink for {}", ws_path);
                 }
@@ -184,16 +199,26 @@ pub async fn ensure_symlinks(state: &DaemonState) {
     }
 }
 
-async fn is_mounted(mount_path: &str) -> anyhow::Result<bool> {
-    let mounts = tokio::fs::read_to_string("/proc/mounts")
+pub async fn is_mounted(mount_path: &str) -> anyhow::Result<bool> {
+    let target = Path::new(mount_path);
+    let target_norm = target.components().collect::<PathBuf>();
+
+    let file = File::open("/proc/mounts")
         .await
-        .context("Failed to read /proc/mounts")?;
-    Ok(mounts.lines().any(|line| {
-        line.split_whitespace()
-            .nth(1)
-            .map(|mp| mp == mount_path)
-            .unwrap_or(false)
-    }))
+        .context("Failed to open /proc/mounts")?;
+    let mut reader = BufReader::new(file).lines();
+
+    while let Some(line) = reader.next_line().await? {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if let Some(mp) = parts.get(1) {
+            let mp_path = Path::new(mp);
+            if mp_path == target || mp_path.components().collect::<PathBuf>() == target_norm {
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
 }
 
 fn parse_df_available(output: &str) -> anyhow::Result<u64> {

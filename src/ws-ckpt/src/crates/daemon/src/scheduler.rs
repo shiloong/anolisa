@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use tokio::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::btrfs_ops;
 use crate::state::DaemonState;
@@ -162,9 +162,17 @@ async fn auto_cleanup(state: &DaemonState) {
     }
 }
 
-/// Health check: verify filesystem usage and warn if above threshold.
+/// Health check: verify filesystem usage.
+///
+/// Skipped when no workspace is registered. WARN on usage above threshold;
+/// ERROR when get_usage fails (umount, fs crash, etc.) so upstream monitors can catch it.
 async fn health_check(state: &DaemonState) {
-    match btrfs_ops::get_filesystem_usage(&state.mount_path).await {
+    if state.all_workspaces().is_empty() {
+        debug!("Health check skipped: no workspace registered");
+        return;
+    }
+
+    match state.backend.get_usage().await {
         Ok((total, used)) => {
             if total > 0 {
                 let usage_pct = (used as f64 / total as f64) * 100.0;
@@ -180,8 +188,13 @@ async fn health_check(state: &DaemonState) {
             }
         }
         Err(e) => {
-            // On non-btrfs systems (e.g., macOS), this is expected to fail
-            info!("Health check: filesystem usage unavailable: {}", e);
+            // `{:#}` prints the full anyhow cause chain (e.g. outer
+            // `with_context` + inner `bail!`), not just the outermost message.
+            error!(
+                "Health check failed on backend {}: {:#}",
+                state.backend.backend_type(),
+                e
+            );
         }
     }
 }

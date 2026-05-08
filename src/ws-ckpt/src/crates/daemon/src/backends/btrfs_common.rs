@@ -343,8 +343,6 @@ fn is_btrfs_temp_ref(path: &str) -> bool {
 ///
 /// Returns (total_bytes, used_bytes). Requires root privileges and a btrfs filesystem.
 pub async fn get_filesystem_usage(mount_path: &Path) -> Result<(u64, u64)> {
-    info!("getting filesystem usage for {}", mount_path.display());
-
     let output = Command::new("btrfs")
         .args(["filesystem", "usage", "-b"])
         .arg(mount_path)
@@ -354,7 +352,6 @@ pub async fn get_filesystem_usage(mount_path: &Path) -> Result<(u64, u64)> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        error!("btrfs filesystem usage failed: {}", stderr);
         bail!("btrfs filesystem usage failed: {}", stderr.trim());
     }
 

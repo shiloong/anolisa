@@ -392,6 +392,14 @@ impl StorageBackend for BtrfsLoopBackend {
     }
 
     async fn get_usage(&self) -> anyhow::Result<(u64, u64)> {
-        btrfs_common::get_filesystem_usage(&self.mount_path).await
+        // Any failure is treated as a real anomaly (manual umount, fs crash, etc.); attach mount path for context.
+        btrfs_common::get_filesystem_usage(&self.mount_path)
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to get btrfs filesystem usage at {}",
+                    self.mount_path.display()
+                )
+            })
     }
 }

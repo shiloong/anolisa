@@ -316,6 +316,7 @@ describe('Gemini Client (client.ts)', () => {
       getUserMemory: vi.fn().mockReturnValue(''),
       getFullContext: vi.fn().mockReturnValue(false),
       getSessionId: vi.fn().mockReturnValue('test-session-id'),
+      setCurrentRunId: vi.fn(),
       getProxy: vi.fn().mockReturnValue(undefined),
       getWorkingDir: vi.fn().mockReturnValue('/test/dir'),
       getFileService: vi.fn().mockReturnValue(fileService),
@@ -1145,6 +1146,49 @@ describe('Gemini Client (client.ts)', () => {
         });
       },
     );
+
+    it('should set currentRunId on config when not a continuation', async () => {
+      // Arrange
+      mockTurnRunFn.mockReturnValue(
+        (async function* () {
+          yield { type: 'content', value: 'Hello' };
+        })(),
+      );
+
+      // Act
+      const stream = client.sendMessageStream(
+        [{ text: 'Hi' }],
+        new AbortController().signal,
+        'test-prompt-id-42',
+      );
+      await fromAsync(stream);
+
+      // Assert
+      expect(mockConfig.setCurrentRunId).toHaveBeenCalledWith(
+        'test-prompt-id-42',
+      );
+    });
+
+    it('should not set currentRunId on config when isContinuation is true', async () => {
+      // Arrange
+      mockTurnRunFn.mockReturnValue(
+        (async function* () {
+          yield { type: 'content', value: 'Hello' };
+        })(),
+      );
+
+      // Act
+      const stream = client.sendMessageStream(
+        [{ text: 'Hi' }],
+        new AbortController().signal,
+        'test-prompt-id-42',
+        { isContinuation: true },
+      );
+      await fromAsync(stream);
+
+      // Assert
+      expect(mockConfig.setCurrentRunId).not.toHaveBeenCalled();
+    });
 
     it('should include editor context when ideMode is enabled', async () => {
       // Arrange

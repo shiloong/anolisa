@@ -40,6 +40,7 @@ describe('ChatRecordingService', () => {
 
     mockConfig = {
       getSessionId: vi.fn().mockReturnValue('test-session-id'),
+      getCurrentRunId: vi.fn().mockReturnValue('test-run-id'),
       getProjectRoot: vi.fn().mockReturnValue('/test/project/root'),
       getCliVersion: vi.fn().mockReturnValue('1.0.0'),
       storage: {

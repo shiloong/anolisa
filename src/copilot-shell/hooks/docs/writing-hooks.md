@@ -267,6 +267,38 @@ else:
     print("{}")
 ```
 
+### Audit Trail with run_id (PostToolUse)
+
+Use `run_id` to correlate all tool calls within a single agent run for auditing.
+
+**`.copilot-shell/hooks/audit-trail.py`:**
+
+```python
+#!/usr/bin/env python3
+import sys, json, datetime
+
+input_data = json.load(sys.stdin)
+
+entry = {
+    "timestamp": datetime.datetime.now().isoformat(),
+    "session_id": input_data["session_id"],
+    "run_id": input_data.get("run_id"),
+    "event": input_data["hook_event_name"],
+    "tool": input_data.get("tool_name", ""),
+}
+
+with open(".copilot-shell/audit.jsonl", "a") as f:
+    f.write(json.dumps(entry) + "\n")
+
+print("{}")
+```
+
+Query all actions from a specific run:
+
+```bash
+jq 'select(.run_id == "sess########3")' .copilot-shell/audit.jsonl
+```
+
 ### Response Logger (AfterModel)
 
 Log all LLM responses for auditing.

@@ -101,6 +101,7 @@ export type HookDecision = 'ask' | 'block' | 'deny' | 'approve' | 'allow';
  */
 export interface HookInput {
   session_id: string;
+  run_id?: string;
   transcript_path: string;
   cwd: string;
   hook_event_name: string;

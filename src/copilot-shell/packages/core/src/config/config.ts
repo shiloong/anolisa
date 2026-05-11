@@ -954,6 +954,16 @@ export class Config {
     return this.sessionId;
   }
 
+  private currentRunId: string | undefined = undefined;
+
+  setCurrentRunId(runId: string): void {
+    this.currentRunId = runId;
+  }
+
+  getCurrentRunId(): string | undefined {
+    return this.currentRunId;
+  }
+
   /**
    * Releases resources owned by the config instance.
    */
@@ -971,6 +981,7 @@ export class Config {
     sessionData?: ResumedSessionData,
   ): string {
     this.sessionId = sessionId ?? randomUUID();
+    this.currentRunId = undefined;
     this.sessionData = sessionData;
     this.chatRecordingService = this.chatRecordingEnabled
       ? new ChatRecordingService(this)

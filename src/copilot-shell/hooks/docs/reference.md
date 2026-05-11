@@ -25,12 +25,22 @@ All hooks receive these common fields via `stdin`:
 ```json
 {
   "session_id": "string",
+  "run_id": "string | undefined",
   "transcript_path": "string",
   "cwd": "string",
   "hook_event_name": "string",
   "timestamp": "string (ISO 8601)"
 }
 ```
+
+| Field             | Type                  | Description                                                                                                                                                                                                                                                        |
+| :---------------- | :-------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `session_id`      | `string`              | Unique identifier for the CLI session (1 session = N runs).                                                                                                                                                                                                        |
+| `run_id`          | `string \| undefined` | Unique identifier for the current agent run (1 run = 1 user prompt → complete response). Format: `{sessionId}########{counter}`. Undefined for session-level events (`SessionStart`, `SessionEnd`) and for `UserPromptSubmit` (which fires before the run begins). |
+| `transcript_path` | `string`              | Path to the session's JSONL transcript file.                                                                                                                                                                                                                       |
+| `cwd`             | `string`              | Current working directory.                                                                                                                                                                                                                                         |
+| `hook_event_name` | `string`              | The event that triggered this hook.                                                                                                                                                                                                                                |
+| `timestamp`       | `string`              | ISO 8601 timestamp of when the event fired.                                                                                                                                                                                                                        |
 
 ---
 

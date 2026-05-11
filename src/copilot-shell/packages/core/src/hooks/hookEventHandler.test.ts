@@ -26,6 +26,7 @@ describe('HookEventHandler', () => {
   beforeEach(() => {
     mockConfig = {
       getSessionId: vi.fn().mockReturnValue('test-session-id'),
+      getCurrentRunId: vi.fn().mockReturnValue('test-run-id'),
       getTranscriptPath: vi.fn().mockReturnValue('/test/transcript'),
       getWorkingDir: vi.fn().mockReturnValue('/test/cwd'),
     } as unknown as Config;
@@ -69,6 +70,55 @@ describe('HookEventHandler', () => {
     errors: [],
     totalDuration: 100,
     finalOutput,
+  });
+
+  describe('createBaseInput run_id', () => {
+    it('should include run_id from config in hook input', async () => {
+      const mockPlan = createMockExecutionPlan([
+        {
+          type: HookType.Command,
+          command: 'echo test',
+          source: HooksConfigSource.Project,
+        },
+      ]);
+      vi.mocked(mockHookPlanner.createExecutionPlan).mockReturnValue(mockPlan);
+      vi.mocked(mockHookRunner.executeHooksParallel).mockResolvedValue([]);
+      vi.mocked(mockHookAggregator.aggregateResults).mockReturnValue(
+        createMockAggregatedResult(true),
+      );
+
+      await hookEventHandler.fireUserPromptSubmitEvent('test');
+
+      const mockCalls = (mockHookRunner.executeHooksParallel as Mock).mock
+        .calls;
+      const input = mockCalls[0][2] as { session_id: string; run_id: string };
+      expect(input.session_id).toBe('test-session-id');
+      expect(input.run_id).toBe('test-run-id');
+    });
+
+    it('should include undefined run_id when not set', async () => {
+      vi.mocked(mockConfig.getCurrentRunId).mockReturnValue(undefined);
+
+      const mockPlan = createMockExecutionPlan([
+        {
+          type: HookType.Command,
+          command: 'echo test',
+          source: HooksConfigSource.Project,
+        },
+      ]);
+      vi.mocked(mockHookPlanner.createExecutionPlan).mockReturnValue(mockPlan);
+      vi.mocked(mockHookRunner.executeHooksParallel).mockResolvedValue([]);
+      vi.mocked(mockHookAggregator.aggregateResults).mockReturnValue(
+        createMockAggregatedResult(true),
+      );
+
+      await hookEventHandler.fireUserPromptSubmitEvent('test');
+
+      const mockCalls = (mockHookRunner.executeHooksParallel as Mock).mock
+        .calls;
+      const input = mockCalls[0][2] as { run_id?: string };
+      expect(input.run_id).toBeUndefined();
+    });
   });
 
   describe('fireUserPromptSubmitEvent', () => {

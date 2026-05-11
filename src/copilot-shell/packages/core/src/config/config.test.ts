@@ -1527,3 +1527,39 @@ describe('Custom Skill Paths Configuration', () => {
     expect(resolved).toEqual(['/absolute/path']);
   });
 });
+
+describe('currentRunId', () => {
+  const baseParams: ConfigParameters = {
+    cwd: '/tmp',
+    embeddingModel: 'test-embedding-model',
+    targetDir: '/path/to/target',
+    debugMode: false,
+    usageStatisticsEnabled: false,
+    overrideExtensions: [],
+  };
+
+  it('should return undefined before any run_id is set', () => {
+    const config = new Config({ ...baseParams });
+    expect(config.getCurrentRunId()).toBeUndefined();
+  });
+
+  it('should store and retrieve a run_id', () => {
+    const config = new Config({ ...baseParams });
+    config.setCurrentRunId('session-123########1');
+    expect(config.getCurrentRunId()).toBe('session-123########1');
+  });
+
+  it('should overwrite the previous run_id', () => {
+    const config = new Config({ ...baseParams });
+    config.setCurrentRunId('run-1');
+    config.setCurrentRunId('run-2');
+    expect(config.getCurrentRunId()).toBe('run-2');
+  });
+
+  it('should be cleared when startNewSession is called', () => {
+    const config = new Config({ ...baseParams });
+    config.setCurrentRunId('run-from-old-session');
+    config.startNewSession();
+    expect(config.getCurrentRunId()).toBeUndefined();
+  });
+});

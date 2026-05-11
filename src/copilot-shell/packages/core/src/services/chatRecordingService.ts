@@ -41,6 +41,8 @@ export interface ChatRecord {
   parentUuid: string | null;
   /** Session identifier - groups records into a logical conversation */
   sessionId: string;
+  /** Run identifier - correlates records within a single agent run */
+  runId?: string;
   /** ISO 8601 timestamp of when the record was created */
   timestamp: string;
   /**
@@ -255,6 +257,7 @@ export class ChatRecordingService {
       uuid: randomUUID(),
       parentUuid: this.lastRecordUuid,
       sessionId: this.getSessionId(),
+      runId: this.config.getCurrentRunId(),
       timestamp: new Date().toISOString(),
       type,
       cwd: this.config.getProjectRoot(),

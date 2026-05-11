@@ -435,6 +435,7 @@ export class HookEventHandler {
 
     return {
       session_id: this.config.getSessionId(),
+      run_id: this.config.getCurrentRunId(),
       transcript_path: transcriptPath,
       cwd: this.config.getWorkingDir(),
       hook_event_name: eventName,

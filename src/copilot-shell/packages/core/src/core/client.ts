@@ -617,6 +617,7 @@ export class GeminiClient {
     if (!options?.isContinuation) {
       this.loopDetector.reset(prompt_id);
       this.lastPromptId = prompt_id;
+      this.config.setCurrentRunId(prompt_id);
 
       // record user message for session management
       this.config.getChatRecordingService()?.recordUserMessage(request);

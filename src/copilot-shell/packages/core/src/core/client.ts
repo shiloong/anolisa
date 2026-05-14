@@ -528,10 +528,16 @@ export class GeminiClient {
     options?: { isContinuation: boolean },
     turns: number = MAX_TURNS,
   ): AsyncGenerator<ServerGeminiStreamEvent, Turn> {
+    // A continuation is any internal re-entry into this method for the same
+    // user prompt: tool-response follow-ups, Stop-hook continuation, and the
+    // next-speaker auto-continue path. UserPromptSubmit semantics ("when the
+    // user submits a prompt") only apply to the first, non-continuation call.
+    const isContinuation = options?.isContinuation === true;
+
     // Fire UserPromptSubmit hook through MessageBus (only if hooks are enabled)
     const hooksEnabled = this.config.getEnableHooks();
     const messageBus = this.config.getMessageBus();
-    if (hooksEnabled && messageBus) {
+    if (hooksEnabled && messageBus && !isContinuation) {
       const promptText = partToString(request);
       const response = await messageBus.request<
         HookExecutionRequest,
@@ -614,7 +620,7 @@ export class GeminiClient {
       }
     }
 
-    if (!options?.isContinuation) {
+    if (!isContinuation) {
       this.loopDetector.reset(prompt_id);
       this.lastPromptId = prompt_id;
       this.config.setCurrentRunId(prompt_id);
@@ -704,7 +710,7 @@ export class GeminiClient {
 
     // append system reminders to the request
     let requestToSent = await flatMapTextParts(request, async (text) => [text]);
-    if (!options?.isContinuation) {
+    if (!isContinuation) {
       const systemReminders = [];
 
       // add subagent system reminder if there are subagents
@@ -829,12 +835,14 @@ export class GeminiClient {
       if (nextSpeakerCheck?.next_speaker === 'model') {
         const nextRequest = [{ text: 'Please continue.' }];
         // This recursive call's events will be yielded out, and the final
-        // turn object from the recursive call will be returned.
+        // turn object from the recursive call will be returned. Mark it as a
+        // continuation so UserPromptSubmit (and other once-per-prompt setup)
+        // does not fire for the synthesized "Please continue." message.
         return yield* this.sendMessageStream(
           nextRequest,
           signal,
           prompt_id,
-          options,
+          { ...options, isContinuation: true },
           boundedTurns - 1,
         );
       }

@@ -37,6 +37,10 @@ import { FileDiscoveryService } from '../services/fileDiscoveryService.js';
 import { setSimulate429 } from '../utils/testUtils.js';
 import { ideContextStore } from '../ide/ideContext.js';
 import { uiTelemetryService } from '../telemetry/uiTelemetry.js';
+import {
+  MessageBusType,
+  type HookExecutionRequest,
+} from '../confirmation-bus/types.js';
 
 // Mock fs module to prevent actual file system operations during tests
 const mockFileSystem = new Map<string, string>();
@@ -2401,6 +2405,137 @@ Other open files:
       // Assert - loop detection methods should not be called when skipLoopDetection is true
       expect(ldMock.turnStarted).not.toHaveBeenCalled();
       expect(ldMock.addAndCheck).not.toHaveBeenCalled();
+    });
+
+    describe('UserPromptSubmit hook firing semantics', () => {
+      function createMockMessageBus() {
+        return {
+          request: vi.fn().mockResolvedValue({
+            type: MessageBusType.HOOK_EXECUTION_RESPONSE,
+            correlationId: 'test-correlation-id',
+            success: true,
+          }),
+        };
+      }
+
+      function userPromptSubmitCallCount(bus: { request: Mock }): number {
+        return bus.request.mock.calls.filter(
+          (call) =>
+            (call[0] as HookExecutionRequest).eventName === 'UserPromptSubmit',
+        ).length;
+      }
+
+      it('does not refire UserPromptSubmit on continuation calls (e.g. tool response, Stop hook)', async () => {
+        // Arrange: enable hooks + provide messageBus
+        const mockMessageBus = createMockMessageBus();
+        vi.mocked(mockConfig.getEnableHooks).mockReturnValue(true);
+        vi.mocked(mockConfig.getMessageBus).mockReturnValue(
+          mockMessageBus as unknown as ReturnType<Config['getMessageBus']>,
+        );
+        // PreCompact hook uses hookSystem; return undefined so it short-circuits.
+        (mockConfig as unknown as { getHookSystem: Mock }).getHookSystem = vi
+          .fn()
+          .mockReturnValue(undefined);
+
+        const mockChat: Partial<GeminiChat> = {
+          addHistory: vi.fn(),
+          getHistory: vi.fn().mockReturnValue([]),
+          stripThoughtsFromHistory: vi.fn(),
+        };
+        client['chat'] = mockChat as GeminiChat;
+
+        // Initial user prompt
+        mockTurnRunFn.mockReturnValueOnce(
+          (async function* () {
+            yield { type: 'content', value: 'Hello' };
+          })(),
+        );
+        const initialStream = client.sendMessageStream(
+          [{ text: 'Hi' }],
+          new AbortController().signal,
+          'prompt-id-dedup',
+        );
+        for await (const _ of initialStream) {
+          // drain
+        }
+
+        // Continuation (e.g. tool result follow-up) with the same prompt id
+        mockTurnRunFn.mockReturnValueOnce(
+          (async function* () {
+            yield { type: 'content', value: 'After tool' };
+          })(),
+        );
+        const continuationStream = client.sendMessageStream(
+          [{ text: 'tool result' }],
+          new AbortController().signal,
+          'prompt-id-dedup',
+          { isContinuation: true },
+        );
+        for await (const _ of continuationStream) {
+          // drain
+        }
+
+        // Assert: UserPromptSubmit fired exactly once across both calls.
+        expect(userPromptSubmitCallCount(mockMessageBus)).toBe(1);
+      });
+
+      it('does not refire UserPromptSubmit when next-speaker recursion sends "Please continue."', async () => {
+        // Arrange: enable hooks + messageBus
+        const mockMessageBus = createMockMessageBus();
+        vi.mocked(mockConfig.getEnableHooks).mockReturnValue(true);
+        vi.mocked(mockConfig.getMessageBus).mockReturnValue(
+          mockMessageBus as unknown as ReturnType<Config['getMessageBus']>,
+        );
+        // PreCompact hook uses hookSystem; return undefined so it short-circuits.
+        (mockConfig as unknown as { getHookSystem: Mock }).getHookSystem = vi
+          .fn()
+          .mockReturnValue(undefined);
+
+        // First check: model should continue. Second: stop.
+        const { checkNextSpeaker } =
+          await import('../utils/nextSpeakerChecker.js');
+        const mockCheckNextSpeaker = vi.mocked(checkNextSpeaker);
+        mockCheckNextSpeaker
+          .mockResolvedValueOnce({
+            next_speaker: 'model',
+            reasoning: 'continue',
+          })
+          .mockResolvedValueOnce(null);
+
+        // Both turn.run() invocations need a fresh stream.
+        mockTurnRunFn
+          .mockReturnValueOnce(
+            (async function* () {
+              yield { type: 'content', value: 'first half' };
+            })(),
+          )
+          .mockReturnValueOnce(
+            (async function* () {
+              yield { type: 'content', value: 'second half' };
+            })(),
+          );
+
+        const mockChat: Partial<GeminiChat> = {
+          addHistory: vi.fn(),
+          getHistory: vi.fn().mockReturnValue([]),
+          stripThoughtsFromHistory: vi.fn(),
+        };
+        client['chat'] = mockChat as GeminiChat;
+
+        const stream = client.sendMessageStream(
+          [{ text: 'Hi' }],
+          new AbortController().signal,
+          'prompt-id-nextspeaker',
+        );
+        for await (const _ of stream) {
+          // drain
+        }
+
+        // Assert: recursion fired (checkNextSpeaker called twice) but
+        // UserPromptSubmit fired exactly once for this user prompt.
+        expect(mockCheckNextSpeaker).toHaveBeenCalledTimes(2);
+        expect(userPromptSubmitCallCount(mockMessageBus)).toBe(1);
+      });
     });
   });
 

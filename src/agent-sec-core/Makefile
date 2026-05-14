@@ -177,7 +177,7 @@ stage-tools: ## Stage tools (sign-skill.sh) to BUILD_DIR
 	cp -p tools/sign-skill.sh $(BUILD_DIR)/tools/
 
 .PHONY: build-all
-build-all: build-sandbox build-cli build-openclaw-plugin stage-cosh-extension stage-skills stage-tools ## Build all components
+build-all: build-sandbox build-cli build-openclaw-plugin stage-cosh-extension stage-skills ## Build all components
 	@echo "📦 All artifacts collected to $(BUILD_DIR)/"
 
 .PHONY: export-requirements
@@ -298,7 +298,7 @@ install-cosh-hook: ## Install cosh hooks (linux-sandbox + extension)
 	cp -rp $(BUILD_DIR)/cosh-extension/. $(DESTDIR)$(EXTENSIONDIR)/
 
 .PHONY: install-all
-install-all: install-cli-venv install-sandbox install-cosh-hook install-openclaw-plugin install-skills install-tool ## Install all (user source build)
+install-all: install-cli-venv install-sandbox install-cosh-hook install-openclaw-plugin install-skills ## Install all (user source build)
 
 .PHONY: install-all-for-rpmbuild
 install-all-for-rpmbuild: install-cli-site install-cosh-hook install-openclaw-plugin install-skills ## Install all (RPM build)

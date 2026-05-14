@@ -65,8 +65,6 @@ jobs:
           ls ~/.local/lib/anolisa/sec-core/openclaw-plugin/
           ls ~/.local/lib/anolisa/sec-core/openclaw-plugin/dist/
           ls ~/.local/lib/anolisa/sec-core/openclaw-plugin/scripts/
-          echo "=== sign-skill.sh ==="
-          ls ~/.local/libexec/anolisa/sec-core/sign-skill.sh
           echo "=== CLI venv ==="
           ls ~/.local/lib/anolisa/sec-core/venv/bin/agent-sec-cli
       - name: Run E2E tests

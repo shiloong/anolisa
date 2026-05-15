@@ -12,6 +12,7 @@ TOON_DIR := third_party/toon
         adapter-install adapter-uninstall adapter-scan \
         cosh-install cosh-uninstall \
         openclaw-install openclaw-uninstall \
+        hermes-install hermes-uninstall \
         setup help \
         test-hooks
 
@@ -45,7 +46,8 @@ install: build
 	@echo "==> Installed tokenless to $(BIN_DIR), rtk/toon to $(LIB_DIR) (symlinked to $(BIN_DIR))"
 	@echo "==> Installing adapter resources to $(SHARE_DIR)..."
 	@mkdir -p $(SHARE_DIR)/common/hooks $(SHARE_DIR)/common/commands \
-	           $(SHARE_DIR)/cosh/scripts $(SHARE_DIR)/openclaw/scripts
+	           $(SHARE_DIR)/cosh/scripts $(SHARE_DIR)/openclaw/scripts \
+	           $(SHARE_DIR)/hermes/scripts
 	cp $(ADAPTER_DIR)/manifest.json $(SHARE_DIR)/
 	cp $(ADAPTER_DIR)/common/tool-ready-spec.json $(SHARE_DIR)/common/
 	cp $(ADAPTER_DIR)/common/tokenless-env-fix.sh $(SHARE_DIR)/common/
@@ -60,6 +62,11 @@ install: build
 	cp $(ADAPTER_DIR)/openclaw/scripts/uninstall.sh $(SHARE_DIR)/openclaw/scripts/
 	cp $(ADAPTER_DIR)/openclaw/openclaw.plugin.json $(SHARE_DIR)/openclaw/
 	cp $(ADAPTER_DIR)/openclaw/package.json $(SHARE_DIR)/openclaw/
+	cp $(ADAPTER_DIR)/hermes/__init__.py $(SHARE_DIR)/hermes/
+	cp $(ADAPTER_DIR)/hermes/plugin.yaml $(SHARE_DIR)/hermes/
+	cp $(ADAPTER_DIR)/hermes/scripts/detect.sh $(SHARE_DIR)/hermes/scripts/
+	cp $(ADAPTER_DIR)/hermes/scripts/install.sh $(SHARE_DIR)/hermes/scripts/
+	cp $(ADAPTER_DIR)/hermes/scripts/uninstall.sh $(SHARE_DIR)/hermes/scripts/
 	@echo "==> Adapter resources installed to $(SHARE_DIR)"
 
 # Run tests
@@ -115,9 +122,9 @@ ADAPTER_ENV = ANOLISA_PREFIX=$(HOME)/.local \
               ANOLISA_COMPONENT=tokenless \
               ANOLISA_VERSION=0.3.2
 
-adapter-install: cosh-install openclaw-install
+adapter-install: cosh-install openclaw-install hermes-install
 
-adapter-uninstall: cosh-uninstall openclaw-uninstall
+adapter-uninstall: cosh-uninstall openclaw-uninstall hermes-uninstall
 
 adapter-scan:
 	@echo "=== Tokenless Adapter Manifest ==="
@@ -144,8 +151,20 @@ openclaw-uninstall:
 	@echo "==> Uninstalling tokenless OpenClaw plugin..."
 	@$(ADAPTER_ENV) ANOLISA_TARGET=openclaw bash $(SHARE_DIR)/openclaw/scripts/uninstall.sh
 
+# --- Hermes Agent ---
+HERMES_ADAPTER_DIR = $(SHARE_DIR)/hermes
+
+hermes-install:
+	@echo "==> Installing Hermes Agent plugin..."
+	@$(ADAPTER_ENV) ANOLISA_TARGET=hermes bash $(HERMES_ADAPTER_DIR)/scripts/detect.sh || true
+	@$(ADAPTER_ENV) ANOLISA_TARGET=hermes bash $(HERMES_ADAPTER_DIR)/scripts/install.sh
+
+hermes-uninstall:
+	@echo "==> Uninstalling Hermes Agent plugin..."
+	@$(ADAPTER_ENV) ANOLISA_TARGET=hermes bash $(HERMES_ADAPTER_DIR)/scripts/uninstall.sh
+
 # One-step setup: build + install + all adapters
-setup: install adapter-install
+setup: install adapter-install hermes-install
 	@echo ""
 	@echo "============================================"
 	@echo "  Token-Less setup complete!"
@@ -157,7 +176,7 @@ setup: install adapter-install
 	@echo "  Adapter (FHS):"
 	@echo "    $(SHARE_DIR)/"
 	@echo "  Registered:"
-	@echo "    cosh, openclaw"
+	@echo "    cosh, openclaw, hermes"
 	@echo ""
 	@echo "Verify:"
 	@echo "  tokenless --version"
@@ -186,6 +205,8 @@ help:
 	@echo "  cosh-uninstall    Unregister copilot-shell extension"
 	@echo "  openclaw-install  Register OpenClaw plugin"
 	@echo "  openclaw-uninstall Unregister OpenClaw plugin"
+	@echo "  hermes-install    Install Hermes Agent plugin"
+	@echo "  hermes-uninstall  Uninstall Hermes Agent plugin"
 	@echo "  setup             Full setup: build + install + register adapters"
 	@echo "  help              Show this help"
 	@echo ""

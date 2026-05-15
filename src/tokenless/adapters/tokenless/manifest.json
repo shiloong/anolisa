@@ -25,6 +25,22 @@
         "install":   "openclaw/scripts/install.sh",
         "uninstall": "openclaw/scripts/uninstall.sh"
       }
+    },
+    "hermes": {
+      "compatibleVersions": ">=1.0.0",
+      "capabilities": {
+        "hooks": [
+          "compress-response",
+          "compress-toon",
+          "rtk-rewrite",
+          "tool-ready"
+        ]
+      },
+      "actions": {
+        "detect":    "hermes/scripts/detect.sh",
+        "install":   "hermes/scripts/install.sh",
+        "uninstall": "hermes/scripts/uninstall.sh"
+      }
     }
   }
 }

@@ -9,10 +9,11 @@ Token-Less combines complementary strategies to minimize LLM token consumption:
 - **Command Rewriting** — Integrates [RTK](https://github.com/rtk-ai/rtk) to filter and rewrite CLI command output, eliminating noise that would otherwise waste 60–90% of tokens.
 - **Tool Ready** — Pre-checks tool execution environments (binaries, configs, permissions, network), auto-fixes missing dependencies, and classifies execution failures as environment issues vs logic errors — reducing wasted retry tokens.
 
-Two integration paths are available:
+Three integration paths are available:
 
 - **OpenClaw plugin** — covers command rewriting, response compression, and schema compression in one plugin.
 - **copilot-shell hook** — intercepts Shell commands via a PreToolUse hook and delegates to RTK for command rewriting + output filtering.
+- **Hermes Agent plugin** — response compression, TOON encoding, command rewriting (block + suggest), and Tool Ready environment pre-check via Hermes's native plugin system.
 
 ## Features
 
@@ -25,6 +26,7 @@ Two integration paths are available:
 | Tool Ready | reduces retry waste | Pre-check env, auto-fix deps, failure attribution |
 | OpenClaw plugin | — | Command rewriting ✅, Response compression ✅, Schema compression ✅ |
 | copilot-shell hooks | — | Tool Ready ✅, Command rewriting ✅, Response compression ✅, TOON ✅, Schema compression ✅ |
+| Hermes Agent plugin | — | Tool Ready ✅, Command rewriting ✅, Response compression ✅, TOON ✅, Schema compression ⏳ |
 | Zero runtime deps | — | Pure Rust, single static binary |
 
 ## Architecture
@@ -41,7 +43,11 @@ Token-Less/
 │   │   ├── tokenless-env-fix.sh # Auto-fix script for missing deps
 │   │   └── commands/            # Hook command configs
 │   ├── cosh/scripts/            # copilot-shell agent scripts (detect/install/uninstall)
-│   └── openclaw/                # OpenClaw plugin + agent scripts
+│   ├── openclaw/                # OpenClaw plugin + agent scripts
+│   └── hermes/                  # Hermes Agent plugin + scripts
+│       ├── scripts/               # detect/install/uninstall (user-driven registration)
+│       ├── plugin.yaml            # Plugin manifest
+│       └── __init__.py            # register(ctx): transform_tool_result + pre_tool_call (env-check + rtk rewrite) + on_session_start
 ├── third_party/rtk/           # RTK submodule (command rewriting engine)
 ├── third_party/toon/          # TOON submodule (JSON to TOON encoding)
 ├── Makefile                   # Unified build system
@@ -59,7 +65,7 @@ cd Token-Less
 make setup
 ```
 
-Both methods install `tokenless` to `~/.local/bin`, helper binaries `rtk`/`toon` alongside it, and deploy the adapters (hooks + OpenClaw plugin).
+Both methods install `tokenless` to `~/.local/bin`, helper binaries `rtk`/`toon` alongside it, and deploy the adapters (hooks + OpenClaw plugin + Hermes plugin).
 
 ## CLI Usage
 
@@ -200,6 +206,43 @@ Options in `openclaw.plugin.json`:
 | `response_compression_enabled` | `true` | Enable tool response compression via `tool_result_persist` |
 | `verbose` | `true` | Log detailed rewrite/compression info |
 
+## Hermes Agent Plugin
+
+The plugin registers hooks at three Hermes events, covering five strategies:
+
+| Strategy | Event | Action | Status |
+|---|---|---|---|
+| Tool Ready | `pre_tool_call` | Environment readiness pre-check with auto-fix and skip-retry feedback | ✅ Active |
+| Command rewriting | `pre_tool_call` | Blocks original command, suggests `rtk`-rewritten version (one extra round-trip) | ✅ Active |
+| Response compression | `transform_tool_result` | Compresses tool results via `tokenless compress-response` | ✅ Active |
+| TOON encoding | `transform_tool_result` | Pipeline step after response compression — encodes JSON to TOON format | ✅ Active |
+| Session tracking | `on_session_start` | Propagates agent/session IDs for stats recording | ✅ Active |
+| Schema compression | — | Not supported by Hermes hook system (no hook exposes tool schemas) | ⏳ Blocked |
+
+**How command rewriting works in Hermes**: Hermes's `pre_tool_call` hook can only block tool execution (not modify arguments), so the plugin blocks the original shell command and returns a message suggesting the RTK-rewritten version. The agent then re-executes with the optimized command, adding one extra tool-call round-trip. This is safe — `rtk rewrite` only does text substitution and never executes the command.
+
+Each hook degrades gracefully — if the corresponding binary is not installed, that hook is silently skipped.
+
+### Install
+
+```bash
+make hermes-install
+```
+
+Enable the plugin:
+
+```bash
+hermes plugins enable tokenless
+```
+
+Or add to `~/.hermes/config.yaml`:
+
+```yaml
+plugins:
+  enabled:
+    - tokenless
+```
+
 ## Build
 
 | Target | Description |
@@ -220,6 +263,8 @@ Options in `openclaw.plugin.json`:
 | `make cosh-uninstall` | Uninstall copilot-shell extension |
 | `make openclaw-install` | Install OpenClaw plugin |
 | `make openclaw-uninstall` | Remove OpenClaw plugin |
+| `make hermes-install` | Install Hermes Agent plugin |
+| `make hermes-uninstall` | Remove Hermes Agent plugin |
 | `make setup` | Full setup: build + install + all adapters |
 
 Override install paths:
@@ -235,6 +280,7 @@ make install BIN_DIR=/usr/local/bin
 | `crates/tokenless-cli/` | CLI binary — `tokenless` command (compress, stats, env-check) |
 | `crates/tokenless-schema/` | Core Rust library — `SchemaCompressor` and `ResponseCompressor` |
 | `adapters/tokenless/` | FHS adapter bundle — manifest, env-check spec/fix, hooks, OpenClaw plugin |
+| `adapters/tokenless/hermes/` | Hermes Agent adapter — plugin + detect/install/uninstall scripts |
 | `third_party/rtk/` | RTK git submodule — command rewriting engine (70+ commands) |
 | `third_party/toon/` | TOON git submodule — JSON to TOON format encoding |
 | `Makefile` | Unified build system for the entire workspace |

@@ -41,6 +41,9 @@ The package includes:
 
 Note: OpenClaw plugin is available under /usr/share/anolisa/adapters/tokenless/openclaw/.
 Copilot-shell extension is auto-discovered from /usr/share/anolisa/extensions/tokenless/.
+Hermes Agent plugin (response compression, TOON encoding, command rewriting via RTK,
+and Tool Ready) is available under /usr/share/anolisa/adapters/tokenless/hermes/.
+Run the install script to register with Hermes: hermes/scripts/install.sh
 
 %prep
 %setup -q -n tokenless
@@ -79,6 +82,7 @@ mkdir -p %{buildroot}%{_libexecdir}/anolisa/tokenless
 mkdir -p %{buildroot}%{_datadir}/anolisa/adapters/tokenless/common/hooks
 mkdir -p %{buildroot}%{_datadir}/anolisa/adapters/tokenless/common/commands
 mkdir -p %{buildroot}%{_datadir}/anolisa/adapters/tokenless/openclaw/scripts
+mkdir -p %{buildroot}%{_datadir}/anolisa/adapters/tokenless/hermes/scripts
 mkdir -p %{buildroot}%{_docdir}/tokenless
 
 # Install binaries — tokenless (user-facing) to /usr/bin, helpers to /usr/libexec/anolisa/tokenless
@@ -116,6 +120,13 @@ install -m 0644 adapters/tokenless/openclaw/index.js %{buildroot}%{_datadir}/ano
 install -m 0644 adapters/tokenless/openclaw/openclaw.plugin.json %{buildroot}%{_datadir}/anolisa/adapters/tokenless/openclaw/
 install -m 0644 adapters/tokenless/openclaw/package.json %{buildroot}%{_datadir}/anolisa/adapters/tokenless/openclaw/
 
+# Install Hermes Agent plugin (Python hooks + install scripts)
+install -m 0755 adapters/tokenless/hermes/__init__.py %{buildroot}%{_datadir}/anolisa/adapters/tokenless/hermes/
+install -m 0644 adapters/tokenless/hermes/plugin.yaml %{buildroot}%{_datadir}/anolisa/adapters/tokenless/hermes/
+install -m 0755 adapters/tokenless/hermes/scripts/detect.sh %{buildroot}%{_datadir}/anolisa/adapters/tokenless/hermes/scripts/
+install -m 0755 adapters/tokenless/hermes/scripts/install.sh %{buildroot}%{_datadir}/anolisa/adapters/tokenless/hermes/scripts/
+install -m 0755 adapters/tokenless/hermes/scripts/uninstall.sh %{buildroot}%{_datadir}/anolisa/adapters/tokenless/hermes/scripts/
+
 # Install cosh extension for auto-discovery at /usr/share/anolisa/extensions/tokenless/
 mkdir -p %{buildroot}%{_datadir}/anolisa/extensions/tokenless/hooks
 mkdir -p %{buildroot}%{_datadir}/anolisa/extensions/tokenless/commands
@@ -146,6 +157,8 @@ install -m 0644 adapters/tokenless/common/commands/tokenless-stats.toml %{buildr
 %dir %{_datadir}/anolisa/adapters/tokenless/common/commands
 %dir %{_datadir}/anolisa/adapters/tokenless/openclaw
 %dir %{_datadir}/anolisa/adapters/tokenless/openclaw/scripts
+%dir %{_datadir}/anolisa/adapters/tokenless/hermes
+%dir %{_datadir}/anolisa/adapters/tokenless/hermes/scripts
 %attr(0644,root,root) %{_datadir}/anolisa/adapters/tokenless/manifest.json
 %attr(0644,root,root) %{_datadir}/anolisa/adapters/tokenless/common/tool-ready-spec.json
 %attr(0644,root,root) %{_datadir}/anolisa/adapters/tokenless/common/cosh-extension.json
@@ -159,6 +172,11 @@ install -m 0644 adapters/tokenless/common/commands/tokenless-stats.toml %{buildr
 %attr(0644,root,root) %{_datadir}/anolisa/adapters/tokenless/openclaw/index.js
 %attr(0644,root,root) %{_datadir}/anolisa/adapters/tokenless/openclaw/openclaw.plugin.json
 %attr(0644,root,root) %{_datadir}/anolisa/adapters/tokenless/openclaw/package.json
+%attr(0755,root,root) %{_datadir}/anolisa/adapters/tokenless/hermes/__init__.py
+%attr(0644,root,root) %{_datadir}/anolisa/adapters/tokenless/hermes/plugin.yaml
+%attr(0755,root,root) %{_datadir}/anolisa/adapters/tokenless/hermes/scripts/detect.sh
+%attr(0755,root,root) %{_datadir}/anolisa/adapters/tokenless/hermes/scripts/install.sh
+%attr(0755,root,root) %{_datadir}/anolisa/adapters/tokenless/hermes/scripts/uninstall.sh
 # Cosh extension — auto-discovered from /usr/share/anolisa/extensions/
 %dir %{_datadir}/anolisa/extensions
 %dir %{_datadir}/anolisa/extensions/tokenless
@@ -184,6 +202,9 @@ rmdir "$HOME/.local/lib/anolisa" 2>/dev/null || true
 rmdir "$HOME/.local/lib" 2>/dev/null || true
 # Remove stale user-level cosh extension (system-level takes priority)
 rm -rf "$HOME/.copilot-shell/extensions/tokenless" 2>/dev/null || true
+# Clean up stale hermes-plugin dir (renamed to hermes/ with scripts)
+rm -rf "/usr/share/anolisa/adapters/tokenless/hermes-plugin" 2>/dev/null || true
+rm -rf "$HOME/.local/share/anolisa/adapters/tokenless/hermes-plugin" 2>/dev/null || true
 hash -r 2>/dev/null || true
 
 %preun
@@ -204,6 +225,13 @@ if [ $1 -eq 0 ]; then
             (.plugins.entries // {} | del(.["tokenless-openclaw"])) as $entries |
             .plugins.allow = $allow | .plugins.entries = $entries' \
             "$OPENCLAW_CFG" > "${OPENCLAW_CFG}.tmp" && mv "${OPENCLAW_CFG}.tmp" "$OPENCLAW_CFG"
+    fi
+    # Uninstall hermes plugin (disable + remove via hermes CLI or manual cleanup)
+    HERMES_SCRIPT="%{_datadir}/anolisa/adapters/tokenless/hermes/scripts/uninstall.sh"
+    if [ -f "$HERMES_SCRIPT" ]; then
+        bash "$HERMES_SCRIPT" || true
+    elif [ -d "$HOME/.hermes/plugins/tokenless" ]; then
+        rm -rf "$HOME/.hermes/plugins/tokenless" 2>/dev/null || true
     fi
 fi
 

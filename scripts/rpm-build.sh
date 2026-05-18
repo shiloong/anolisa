@@ -420,7 +420,7 @@ build_tokenless() {
     log "Step 1/3: Initializing submodules..."
     (
         cd "$TOKEN_DIR"
-        if [ ! -d "third_party/rtk/.git" ]; then
+        if [ ! -e "third_party/rtk/.git" ] && [ ! -d "third_party/rtk/.git" ]; then
             log "Initializing git submodules..."
             git submodule update --init
         fi

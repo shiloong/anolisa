@@ -21,6 +21,14 @@ fn find_char_boundary(s: &str, pos: usize) -> usize {
     }
 }
 
+fn floor_char_boundary(text: &str, idx: usize) -> usize {
+    let mut pos = idx.min(text.len());
+    while !text.is_char_boundary(pos) {
+        pos -= 1;
+    }
+    pos
+}
+
 /// SchemaCompressor compresses OpenAI Function Calling schema
 /// by truncating descriptions, removing titles/examples, and applying
 /// smart compression to reduce token usage.

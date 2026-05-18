@@ -13,6 +13,7 @@ TOON_DIR := third_party/toon
         cosh-install cosh-uninstall \
         openclaw-install openclaw-uninstall \
         hermes-install hermes-uninstall \
+        qoder-install qoder-uninstall \
         setup help \
         test-hooks
 
@@ -47,7 +48,9 @@ install: build
 	@echo "==> Installing adapter resources to $(SHARE_DIR)..."
 	@mkdir -p $(SHARE_DIR)/common/hooks $(SHARE_DIR)/common/commands \
 	           $(SHARE_DIR)/cosh/scripts $(SHARE_DIR)/openclaw/scripts \
-	           $(SHARE_DIR)/hermes/scripts
+	           $(SHARE_DIR)/hermes/scripts \
+	           $(SHARE_DIR)/qoder/.qoder-plugin $(SHARE_DIR)/qoder/scripts \
+	           $(SHARE_DIR)/qoder/hooks $(SHARE_DIR)/qoder/commands
 	cp $(ADAPTER_DIR)/manifest.json $(SHARE_DIR)/
 	cp $(ADAPTER_DIR)/common/tool-ready-spec.json $(SHARE_DIR)/common/
 	cp $(ADAPTER_DIR)/common/tokenless-env-fix.sh $(SHARE_DIR)/common/
@@ -67,6 +70,15 @@ install: build
 	cp $(ADAPTER_DIR)/hermes/scripts/detect.sh $(SHARE_DIR)/hermes/scripts/
 	cp $(ADAPTER_DIR)/hermes/scripts/install.sh $(SHARE_DIR)/hermes/scripts/
 	cp $(ADAPTER_DIR)/hermes/scripts/uninstall.sh $(SHARE_DIR)/hermes/scripts/
+	cp $(ADAPTER_DIR)/qoder/scripts/detect.sh $(SHARE_DIR)/qoder/scripts/
+	cp $(ADAPTER_DIR)/qoder/scripts/install.sh $(SHARE_DIR)/qoder/scripts/
+	cp $(ADAPTER_DIR)/qoder/scripts/uninstall.sh $(SHARE_DIR)/qoder/scripts/
+	cp $(ADAPTER_DIR)/qoder/.qoder-plugin/plugin.json $(SHARE_DIR)/qoder/.qoder-plugin/
+	cp $(ADAPTER_DIR)/qoder/hooks.json $(SHARE_DIR)/qoder/
+	cp $(ADAPTER_DIR)/qoder/commands/*.toml $(SHARE_DIR)/qoder/commands/
+	cp qoder-cli/compress_response_hook.py $(SHARE_DIR)/qoder/hooks/
+	cp qoder-cli/rewrite_hook.py $(SHARE_DIR)/qoder/hooks/
+	cp qoder-cli/tool_ready_hook.sh $(SHARE_DIR)/qoder/hooks/
 	@echo "==> Adapter resources installed to $(SHARE_DIR)"
 
 # Run tests
@@ -122,9 +134,9 @@ ADAPTER_ENV = ANOLISA_PREFIX=$(HOME)/.local \
               ANOLISA_COMPONENT=tokenless \
               ANOLISA_VERSION=0.3.2
 
-adapter-install: cosh-install openclaw-install hermes-install
+adapter-install: cosh-install openclaw-install hermes-install qoder-install
 
-adapter-uninstall: cosh-uninstall openclaw-uninstall hermes-uninstall
+adapter-uninstall: cosh-uninstall openclaw-uninstall hermes-uninstall qoder-uninstall
 
 adapter-scan:
 	@echo "=== Tokenless Adapter Manifest ==="
@@ -162,6 +174,16 @@ hermes-install:
 hermes-uninstall:
 	@echo "==> Uninstalling Hermes Agent plugin..."
 	@$(ADAPTER_ENV) ANOLISA_TARGET=hermes bash $(HERMES_ADAPTER_DIR)/scripts/uninstall.sh
+# --- Qoder CLI ---
+
+qoder-install:
+	@echo "==> Installing tokenless Qoder CLI hooks..."
+	@$(ADAPTER_ENV) ANOLISA_TARGET=qoder bash $(SHARE_DIR)/qoder/scripts/detect.sh
+	@$(ADAPTER_ENV) ANOLISA_TARGET=qoder bash $(SHARE_DIR)/qoder/scripts/install.sh
+
+qoder-uninstall:
+	@echo "==> Uninstalling tokenless Qoder CLI hooks..."
+	@$(ADAPTER_ENV) ANOLISA_TARGET=qoder bash $(SHARE_DIR)/qoder/scripts/uninstall.sh
 
 # One-step setup: build + install + all adapters
 setup: install adapter-install hermes-install
@@ -177,6 +199,7 @@ setup: install adapter-install hermes-install
 	@echo "    $(SHARE_DIR)/"
 	@echo "  Registered:"
 	@echo "    cosh, openclaw, hermes"
+	@echo "    cosh, openclaw, qoder"
 	@echo ""
 	@echo "Verify:"
 	@echo "  tokenless --version"
@@ -199,7 +222,7 @@ help:
 	@echo "  fmt               Format code"
 	@echo "  clean             Clean build artifacts"
 	@echo "  adapter-scan      List registered adapter capabilities"
-	@echo "  adapter-install   Register all adapters (cosh+openclaw)"
+	@echo "  adapter-install   Register all adapters (cosh+openclaw+qoder)"
 	@echo "  adapter-uninstall Unregister all adapters"
 	@echo "  cosh-install      Register copilot-shell extension"
 	@echo "  cosh-uninstall    Unregister copilot-shell extension"
@@ -207,6 +230,8 @@ help:
 	@echo "  openclaw-uninstall Unregister OpenClaw plugin"
 	@echo "  hermes-install    Install Hermes Agent plugin"
 	@echo "  hermes-uninstall  Uninstall Hermes Agent plugin"
+	@echo "  qoder-install     Register Qoder CLI hooks"
+	@echo "  qoder-uninstall   Unregister Qoder CLI hooks"
 	@echo "  setup             Full setup: build + install + register adapters"
 	@echo "  help              Show this help"
 	@echo ""

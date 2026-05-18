@@ -1,0 +1,11 @@
+{
+  "name": "tokenless",
+  "version": "0.3.2",
+  "description": "Token-Less LLM Token Optimization Toolkit for Qoder CLI",
+  "author": {
+    "name": "Shile Zhang",
+    "email": "shile.zhang@linux.alibaba.com"
+  },
+  "homepage": "https://github.com/alibaba/anolisa",
+  "license": "MIT"
+}

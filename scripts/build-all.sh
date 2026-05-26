@@ -729,6 +729,7 @@ install_build_tools() {
 
     local missing=()
     if ! cmd_exists make; then missing+=("make"); fi
+    if ! cmd_exists patch; then missing+=("patch"); fi
 
     if [[ "$PKG_BASE" == "rpm" ]]; then
         if ! cmd_exists g++; then missing+=("gcc-c++"); fi
@@ -1430,7 +1431,7 @@ build_skills() {
         return 0
     fi
 
-    stage_adapter_manifest "os-skills" "$PROJECT_ROOT/src/os-skills/adapter-manifest.json"
+    stage_adapter_manifest "os-skills" "$PROJECT_ROOT/src/os-skills/adapters/adapter-manifest.json"
     ok "os-skills staged to $(component_target_dir os-skills)"
 }
 
@@ -1459,6 +1460,11 @@ build_sec_core() {
     run_logged_timeout "${AGENT_SEC_BUILD_TIMEOUT:-1200}" \
         "make build-all (agent-sec-core)" \
         make build-all BUILD_DIR="$build_dir"
+
+    if [[ -d "$build_dir/share" ]]; then
+        rm -rf "$component_root/share"
+        cp -a "$build_dir/share" "$component_root/share"
+    fi
 
     local bin="$build_dir/linux-sandbox"
     if [[ -f "$bin" ]]; then

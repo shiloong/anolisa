@@ -24,7 +24,8 @@ ADAPTER_TEMPLATES := \
     $(ADAPTER_SRC_DIR)/manifest.json \
     $(ADAPTER_SRC_DIR)/openclaw/package.json \
     $(ADAPTER_SRC_DIR)/openclaw/openclaw.plugin.json \
-    $(ADAPTER_SRC_DIR)/hermes/plugin.yaml
+    $(ADAPTER_SRC_DIR)/hermes/plugin.yaml \
+    $(ADAPTER_SRC_DIR)/claude-code/.claude-plugin/plugin.json
 TOON_VER := 0.4.6
 VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
 
@@ -36,6 +37,7 @@ VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1
         cosh-extension-install cosh-extension-uninstall \
         openclaw-install openclaw-uninstall \
         hermes-install hermes-uninstall \
+        claude-code-install claude-code-uninstall \
         setup help \
         test-hooks
 
@@ -72,6 +74,11 @@ $(ADAPTER_SRC_DIR)/openclaw/openclaw.plugin.json: $(ADAPTER_SRC_DIR)/openclaw/op
 
 $(ADAPTER_SRC_DIR)/hermes/plugin.yaml: $(ADAPTER_SRC_DIR)/hermes/plugin.yaml.in Cargo.toml
 	@echo "==> Generating hermes/plugin.yaml (version=$(VERSION))..."
+	sed 's/@VERSION@/$(VERSION)/g' $< > $@
+
+$(ADAPTER_SRC_DIR)/claude-code/.claude-plugin/plugin.json: \
+    $(ADAPTER_SRC_DIR)/claude-code/.claude-plugin/plugin.json.in Cargo.toml
+	@echo "==> Generating claude-code/.claude-plugin/plugin.json (version=$(VERSION))..."
 	sed 's/@VERSION@/$(VERSION)/g' $< > $@
 
 # Build the tokenless OpenClaw plugin (TypeScript -> dist/index.js).
@@ -178,9 +185,9 @@ ADAPTER_ENV = ANOLISA_PREFIX=$(HOME)/.local \
               ANOLISA_COMPONENT=tokenless \
               ANOLISA_VERSION=$(VERSION)
 
-adapter-install: cosh-extension-install openclaw-install hermes-install
+adapter-install: cosh-extension-install openclaw-install hermes-install claude-code-install
 
-adapter-uninstall: cosh-extension-uninstall openclaw-uninstall hermes-uninstall
+adapter-uninstall: cosh-extension-uninstall openclaw-uninstall hermes-uninstall claude-code-uninstall
 
 adapter-scan:
 	@echo "=== Tokenless Adapter Manifest ==="
@@ -228,6 +235,23 @@ hermes-uninstall:
 	@echo "==> Uninstalling Hermes Agent plugin..."
 	@$(ADAPTER_ENV) ANOLISA_TARGET=hermes bash $(HERMES_ADAPTER_DIR)/scripts/uninstall.sh
 
+# --- Claude Code ---
+# Plugin is sourced from SHARE_DIR (FHS-installed adapter resources). When
+# claude is not available the scripts gracefully no-op so `make adapter-install`
+# stays usable on machines without Claude Code.
+CLAUDE_CODE_ADAPTER_DIR = $(SHARE_DIR)/claude-code
+
+claude-code-install:
+	@echo "==> Installing Claude Code plugin..."
+	@# detect.sh exits 1 (installable) or 2 (missing prereq); we tolerate both
+	@# and let install.sh make the final call (it gracefully no-ops without claude CLI).
+	@$(ADAPTER_ENV) ANOLISA_TARGET=claude-code bash $(CLAUDE_CODE_ADAPTER_DIR)/scripts/detect.sh || true
+	@$(ADAPTER_ENV) ANOLISA_TARGET=claude-code bash $(CLAUDE_CODE_ADAPTER_DIR)/scripts/install.sh
+
+claude-code-uninstall:
+	@echo "==> Uninstalling Claude Code plugin..."
+	@$(ADAPTER_ENV) ANOLISA_TARGET=claude-code bash $(CLAUDE_CODE_ADAPTER_DIR)/scripts/uninstall.sh
+
 # One-step setup: build + install + all adapters
 setup: install adapter-install
 	@echo ""
@@ -243,7 +267,7 @@ setup: install adapter-install
 	@echo "  Adapter (FHS):"
 	@echo "    $(SHARE_DIR)/"
 	@echo "  Registered:"
-	@echo "    cosh, openclaw, hermes"
+	@echo "    cosh, openclaw, hermes, claude-code"
 	@echo ""
 	@echo "Verify:"
 	@echo "  tokenless --version"
@@ -267,7 +291,7 @@ help:
 	@echo "  fmt               Format code"
 	@echo "  clean             Clean build artifacts"
 	@echo "  adapter-scan      List registered adapter capabilities"
-	@echo "  adapter-install   Register all adapters (cosh+openclaw+hermes)"
+	@echo "  adapter-install   Register all adapters (cosh+openclaw+hermes+claude-code)"
 	@echo "  adapter-uninstall Unregister all adapters"
 	@echo "  cosh-extension-install  Install cosh extension"
 	@echo "  cosh-extension-uninstall Uninstall cosh extension"
@@ -275,6 +299,8 @@ help:
 	@echo "  openclaw-uninstall Unregister OpenClaw plugin"
 	@echo "  hermes-install    Install Hermes Agent plugin"
 	@echo "  hermes-uninstall  Uninstall Hermes Agent plugin"
+	@echo "  claude-code-install   Register Claude Code plugin via claude CLI"
+	@echo "  claude-code-uninstall Unregister Claude Code plugin"
 	@echo "  setup             Full setup: build + install + register adapters"
 	@echo "  help              Show this help"
 	@echo ""

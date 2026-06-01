@@ -205,17 +205,18 @@ impl MemoryMcpServer {
     // ---- Tier B: structured search/write API for weak models or batch use ----
 
     #[tool(
-        description = "Tier B: structured BM25 search across the indexed memory store. Returns ranked snippets as JSON. Prefer mem_grep for one-off regex needs; this is faster on large stores."
+        description = "Tier B: search the indexed memory store. Default BM25 keyword search. Set mode=vector for semantic (embedding) search, or mode=hybrid for combined ranking. Requires [memory.embedding] config for vector/hybrid."
     )]
     async fn memory_search(
         &self,
         #[tool(param)] query: String,
         #[tool(param)] top_k: Option<u32>,
+        #[tool(param)] mode: Option<String>,
     ) -> ToolResult {
         let k = top_k.unwrap_or(5) as usize;
         let hits = self
             .svc
-            .memory_search(&query, k)
+            .memory_search(&query, k, mode.as_deref())
             .map_err(|e| fmt_err("search failed", e))?;
         serde_json::to_string_pretty(&hits).map_err(|e| fmt_err("search serialize failed", e))
     }

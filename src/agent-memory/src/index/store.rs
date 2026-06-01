@@ -20,7 +20,7 @@ pub struct BM25Store {
 /// On open, an older DB is upgraded step-by-step until it reaches this
 /// version; a newer DB causes the open to fail so a downgraded binary
 /// doesn't silently corrupt rows it doesn't understand.
-pub(crate) const SCHEMA_VERSION: i64 = 1;
+pub(crate) const SCHEMA_VERSION: i64 = 2;
 
 impl BM25Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -73,6 +73,7 @@ impl BM25Store {
             let tx = conn.transaction()?;
             match at {
                 0 => Self::migrate_0_to_1(&tx)?,
+                1 => Self::migrate_1_to_2(&tx)?,
                 // Future steps insert here, each bumping `at`.
                 n => {
                     return Err(MemoryError::Other(format!(
@@ -103,6 +104,19 @@ impl BM25Store {
                 path UNINDEXED,
                 body,
                 tokenize='trigram'
+            );
+            "#,
+        )?;
+        Ok(())
+    }
+
+    /// Schema v2: add `files_vec` for dense embeddings alongside FTS5.
+    fn migrate_1_to_2(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+        tx.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS files_vec (
+                path TEXT PRIMARY KEY,
+                embedding BLOB NOT NULL
             );
             "#,
         )?;
@@ -193,7 +207,8 @@ impl BM25Store {
         let sql = r#"
             SELECT path,
                    snippet(files_fts, 1, '«', '»', '…', 16) AS snip,
-                   bm25(files_fts) AS rank
+                   bm25(files_fts) AS rank,
+                   body
             FROM files_fts
             WHERE files_fts MATCH ?1
             ORDER BY rank
@@ -201,15 +216,168 @@ impl BM25Store {
         "#;
         let mut stmt = self.conn.prepare(sql)?;
         let rows = stmt.query_map(params![fts_q, top_k as i64], |row| {
+            let body: String = row.get(3)?;
             Ok(SearchHit {
                 path: row.get::<_, String>(0)?,
                 snippet: row.get::<_, String>(1)?,
                 score: row.get::<_, f64>(2)?,
+                suspicious: crate::safety::looks_like_prompt_injection(&body),
             })
         })?;
 
         let out: Vec<SearchHit> = rows.flatten().collect();
         Ok(out)
+    }
+
+    /// Store a dense embedding vector for `rel_path`. The vector is
+    /// serialised as a little-endian f32 BLOB.
+    pub fn upsert_vec(&mut self, rel_path: &str, embedding: &[f32]) -> Result<()> {
+        let blob: Vec<u8> = embedding
+            .iter()
+            .flat_map(|f| f.to_le_bytes())
+            .collect();
+        self.conn.execute(
+            "INSERT OR REPLACE INTO files_vec (path, embedding) VALUES (?1, ?2)",
+            params![rel_path, blob],
+        )?;
+        Ok(())
+    }
+
+    /// Vector-only search: returns `(path, cosine_similarity)` ordered
+    /// by descending similarity. The query vector is normalised and each
+    /// stored vector is normalised on-the-fly so the dot product is
+    /// equivalent to cosine similarity.
+    pub fn search_vec(
+        &self,
+        query_vec: &[f32],
+        top_k: usize,
+    ) -> Result<Vec<(String, f64)>> {
+        let q_norm = l2_normalise(query_vec);
+
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path, embedding FROM files_vec")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Vec<u8>>(1)?,
+            ))
+        })?;
+
+        let mut scores: Vec<(String, f64)> = Vec::new();
+        for row in rows {
+            let (path, blob) = match row {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            let stored = blob_to_f32(&blob);
+            if stored.len() != q_norm.len() {
+                continue;
+            }
+            let similarity = dot_product(&q_norm, &stored) as f64;
+            scores.push((path, similarity));
+        }
+
+        // Sort by descending similarity.
+        scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scores.truncate(top_k);
+        Ok(scores)
+    }
+
+    /// Hybrid search: combines BM25 keyword ranking with vector cosine
+    /// similarity using reciprocal rank fusion (RRF, k=60).
+    ///
+    /// This method is the one callers should use when both the index and
+    /// an embedding provider are available.
+    pub fn search_hybrid(
+        &self,
+        query: &str,
+        query_vec: &[f32],
+        top_k: usize,
+    ) -> Result<Vec<SearchHit>> {
+        // Run both search strategies.
+        let bm25_hits = self.search(query, top_k * 2);
+        let vec_hits = self.search_vec(query_vec, top_k * 2);
+
+        let (bm25_hits, vec_hits): (Vec<SearchHit>, Vec<(String, f64)>) =
+            match (bm25_hits, vec_hits) {
+                (Ok(b), Ok(v)) => (b, v),
+                (Err(e), Ok(v)) => {
+                    tracing::warn!("hybrid search: BM25 failed ({e}); falling back to vector-only");
+                    (Vec::new(), v)
+                }
+                (Ok(b), Err(e)) => {
+                    tracing::warn!("hybrid search: vector failed ({e}); falling back to BM25-only");
+                    (b, Vec::new())
+                }
+                (Err(bm25_err), Err(vec_err)) => {
+                    tracing::warn!(
+                        "hybrid search: both BM25 ({bm25_err}) and vector ({vec_err}) failed"
+                    );
+                    return Ok(Vec::new());
+                }
+            };
+
+        if bm25_hits.is_empty() && vec_hits.is_empty() {
+            return Ok(Vec::new());
+        }
+        if vec_hits.is_empty() {
+            return Ok(bm25_hits.into_iter().take(top_k).collect());
+        }
+        if bm25_hits.is_empty() {
+            // Reconstruct SearchHit from vector-only results.
+            return Ok(vec_hits
+                .into_iter()
+                .take(top_k)
+                .map(|(path, score)| {
+                    SearchHit {
+                        path,
+                        snippet: String::new(),
+                        score,
+                        suspicious: false,
+                    }
+                })
+                .collect());
+        }
+
+        // RRF: score = Σ 1/(k + rank_i) for each result set.
+        const RRF_K: f64 = 60.0;
+        let mut rrf: std::collections::HashMap<String, f64> =
+            std::collections::HashMap::new();
+        let mut snippets: std::collections::HashMap<String, (String, bool)> =
+            std::collections::HashMap::new();
+
+        for (rank, hit) in bm25_hits.iter().enumerate() {
+            let rrf_score = 1.0 / (RRF_K + (rank as f64 + 1.0));
+            *rrf.entry(hit.path.clone()).or_default() += rrf_score;
+            snippets
+                .entry(hit.path.clone())
+                .or_insert((hit.snippet.clone(), hit.suspicious));
+        }
+        for (rank, (path, _)) in vec_hits.iter().enumerate() {
+            let rrf_score = 1.0 / (RRF_K + (rank as f64 + 1.0));
+            *rrf.entry(path.clone()).or_default() += rrf_score;
+            snippets.entry(path.clone()).or_default();
+        }
+
+        let mut merged: Vec<(String, f64)> = rrf.into_iter().collect();
+        merged.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        merged.truncate(top_k);
+
+        Ok(merged
+            .into_iter()
+            .map(|(path, score)| {
+                let (snippet, suspicious) = snippets
+                    .remove(&path)
+                    .unwrap_or_default();
+                SearchHit {
+                    path,
+                    snippet,
+                    score,
+                    suspicious,
+                }
+            })
+            .collect())
     }
 
     pub fn count(&self) -> Result<usize> {
@@ -266,6 +434,26 @@ pub(crate) fn mtime_ms_of(meta: &std::fs::Metadata) -> i64 {
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0),
     }
+}
+
+// ── vector helpers ─────────────────────────────────────────────
+
+fn l2_normalise(vec: &[f32]) -> Vec<f32> {
+    let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm == 0.0 {
+        return vec.to_vec();
+    }
+    vec.iter().map(|x| x / norm).collect()
+}
+
+fn dot_product(a: &[f32], b: &[f32]) -> f32 {
+    a.iter().zip(b).map(|(x, y)| x * y).sum()
+}
+
+fn blob_to_f32(blob: &[u8]) -> Vec<f32> {
+    blob.chunks_exact(4)
+        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect()
 }
 
 #[cfg(test)]

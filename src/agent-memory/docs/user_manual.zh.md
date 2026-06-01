@@ -36,7 +36,9 @@
   `..`、symlink 以及元目录访问。
 - **可版本化** —— 可选的 git 自动 commit + tar.gz 快照分别提供
   文件级 / mount 级回滚。
-- **可检索** —— 后台运行 SQLite FTS5 BM25 索引，全文检索次毫秒级。
+- **可检索** —— 后台运行 SQLite FTS5 BM25 索引（全文检索次毫秒级），
+  可选搭配 OpenAI / Ollama embedding 后端启用稠密向量语义搜索及
+  BM25+向量混合检索（RRF 融合排序）。
 
 ### 适用场景
 
@@ -216,7 +218,7 @@ bash /usr/share/anolisa/adapters/agent-memory/openclaw/scripts/uninstall.sh
 
 | OpenClaw contract | agent-memory MCP 工具 |
 |---|---|
-| `memory_search` | `memory_search`（Tier B，BM25） |
+| `memory_search` | `memory_search`（Tier B，BM25 默认；配置 embedding 后支持 `mode=vector\|hybrid`） |
 | `memory_get` | `mem_read`（Tier A） |
 | `memory_observe` | `memory_observe`（Tier B） |
 | `memory_get_context` | `memory_get_context`（Tier B） |
@@ -341,6 +343,11 @@ auto_commit = true
 | `MEMORY_MAX_READ_BYTES` | `memory.max_read_bytes` | |
 | `MEMORY_MAX_WRITE_BYTES` | `memory.max_write_bytes` | |
 | `MEMORY_MAX_APPEND_BYTES` | `memory.max_append_bytes` | |
+| `MEMORY_EMBEDDING_BACKEND` | `memory.embedding.backend` | `none` / `openai` / `ollama` |
+| `MEMORY_OPENAI_API_KEY` | `memory.embedding.api_key` | 为空时回退到 `OPENAI_API_KEY` |
+| `MEMORY_OPENAI_MODEL` | `memory.embedding.model` | 默认 `text-embedding-3-small` |
+| `MEMORY_OLLAMA_MODEL` | `memory.embedding.model` | 默认 `nomic-embed-text` |
+| `MEMORY_OLLAMA_BASE_URL` | `memory.embedding.base_url` | 默认 `http://localhost:11434` |
 | `MEMORY_SESSION_ID` | （仅运行时） | 把当前 Agent 运行固定到 `MEMORY_SESSION_DIR` 下指定的 session id；`mem_promote` 必须设置，详见 §7。 |
 
 ### Profile 含义
@@ -355,6 +362,33 @@ Profile 是 UX 提示而非安全边界，但在 `tools/list` 和 `tools/call`
   `memory_get_context`），且 `tools/call` 调用会以 `METHOD_NOT_FOUND`
   拒绝。已经熟练操作文件系统的前沿模型只需要 Tier A 与 Tier C。
 
+
+### Embedding / 语义搜索
+
+配置 `[memory.embedding]` 段启用稠密向量语义搜索：
+
+```toml
+[memory.embedding]
+backend = "openai"
+api_key = ""           # 为空时自动读 OPENAI_API_KEY 环境变量
+model = "text-embedding-3-small"
+```
+
+或使用本地 Ollama（无需 API key）：
+
+```toml
+[memory.embedding]
+backend = "ollama"
+model = "nomic-embed-text"
+base_url = "http://localhost:11434"
+```
+
+启用后，`memory_search` 支持 `mode` 参数：
+- `mode="bm25"`（默认）—— 纯关键词搜索，向后兼容
+- `mode="vector"` —— 纯语义搜索（余弦相似度）
+- `mode="hybrid"` —— RRF (k=60) 融合 BM25 + 向量排序
+
+未配置 embedding 时，`vector` / `hybrid` 模式会自动降级为 BM25，不会报错。
 ---
 
 ## 5. 主要功能
@@ -372,11 +406,17 @@ Agent 以 mount 相对路径思考。保留前缀（`.anolisa`、`.git`、`.giti
 
 ### Tier B —— 结构化检索（3 个工具）
 
-`memory_search` 在 FTS5 索引上跑 BM25 查询，返回排序好的片段。
+`memory_search` 在 FTS5 索引上跑 BM25 关键字查询（默认），返回排序片段。
+当配置了 embedding 后端（OpenAI 或 Ollama）后，`mode="vector"` 启用
+纯语义搜索，`mode="hybrid"` 则以 RRF（Reciprocal Rank Fusion, k=60）
+融合 BM25 和向量结果，兼顾关键词匹配与语义理解。无 embedding 时
+vector/hybrid 会自动降级为 BM25，不会报错。
+
 `memory_observe` 把一段内容连同 frontmatter 写到
 `notes/observed/<ULID>.md`，让 Agent "零决策"地记下一个想法。
 `memory_get_context` 按 token 上限拼出最近修改文件的 markdown 预览，
-适合在每次回合开始时让 Agent "看一眼仓里都有什么"。
+适合在每次回合开始时让 Agent "看一眼仓里都有什么"。返回的每条结果
+含 `suspicious` 字段，标记是否命中注入检测模式。
 
 ### Tier C —— 治理（5 个工具）
 
@@ -425,7 +465,7 @@ mount 范围的时间点备份（tar.gz + sidecar 元数据）。`mem_log` 与
 
 | 工具 | 必填 | 可选 | 返回 |
 |------|------|------|------|
-| `memory_search` | `query` | `top_k`（默认 5） | `{path, score, snippet}` 数组 |
+| `memory_search` | `query` | `top_k`（默认 5）、`mode`（bm25/vector/hybrid） | `{path, score, snippet, suspicious}` 数组 |
 | `memory_observe` | `content` | `hint` | `observed at notes/observed/<ulid>.md` |
 | `memory_get_context` | — | `max_tokens`（默认 2048） | markdown 预览 |
 

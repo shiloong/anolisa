@@ -453,6 +453,16 @@ mod tests {
     }
 
     #[test]
+    fn embedding_config_parses_none_from_toml() {
+        let toml = r#"
+            [memory.embedding]
+            backend = "none"
+            "#;
+        let cfg: AppConfig = toml::from_str(toml).unwrap();
+        assert!(matches!(cfg.memory.embedding, EmbeddingConfig::None));
+    }
+
+    #[test]
     fn embedding_config_env_override_defaults_to_none() {
         // When MEMORY_EMBEDDING_BACKEND is not set, config stays at default (None).
         let mut cfg = AppConfig::default();

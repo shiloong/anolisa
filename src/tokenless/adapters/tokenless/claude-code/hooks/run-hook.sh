@@ -38,6 +38,8 @@ esac
 
 CANDIDATES=(
     "/usr/share/anolisa/adapters/tokenless/common/hooks/${SCRIPT}"
+    "/opt/homebrew/share/anolisa/adapters/tokenless/common/hooks/${SCRIPT}"
+    "/usr/local/share/anolisa/adapters/tokenless/common/hooks/${SCRIPT}"
     "${HOME}/.local/share/anolisa/adapters/tokenless/common/hooks/${SCRIPT}"
 )
 

@@ -33,10 +33,15 @@ fn current_uid() -> u32 {
 #[allow(clippy::collapsible_if)]
 fn is_trusted_path(path: &std::path::Path) -> bool {
     // System paths are always trusted
+    // Linux FHS: /usr/share, /usr/libexec, /usr/lib/anolisa, /usr/local/share
+    // macOS Homebrew (Apple Silicon): /opt/homebrew/{share,libexec,lib/anolisa}
     if path.starts_with("/usr/share")
         || path.starts_with("/usr/libexec")
         || path.starts_with("/usr/lib/anolisa")
         || path.starts_with("/usr/local/share")
+        || path.starts_with("/opt/homebrew/share")
+        || path.starts_with("/opt/homebrew/libexec")
+        || path.starts_with("/opt/homebrew/lib/anolisa")
     {
         return true;
     }
@@ -49,6 +54,9 @@ fn is_trusted_path(path: &std::path::Path) -> bool {
                     || resolved.starts_with("/usr/libexec")
                     || resolved.starts_with("/usr/lib/anolisa")
                     || resolved.starts_with("/usr/local/share")
+                    || resolved.starts_with("/opt/homebrew/share")
+                    || resolved.starts_with("/opt/homebrew/libexec")
+                    || resolved.starts_with("/opt/homebrew/lib/anolisa")
                 {
                     return true;
                 }
@@ -1610,6 +1618,9 @@ mod tests {
         assert!(is_trusted_path(Path::new("/usr/libexec/anolisa/x")));
         assert!(is_trusted_path(Path::new("/usr/lib/anolisa/x")));
         assert!(is_trusted_path(Path::new("/usr/local/share/anolisa/x")));
+        assert!(is_trusted_path(Path::new("/opt/homebrew/share/anolisa/x")));
+        assert!(is_trusted_path(Path::new("/opt/homebrew/libexec/anolisa/x")));
+        assert!(is_trusted_path(Path::new("/opt/homebrew/lib/anolisa/x")));
     }
 
     #[cfg(unix)]

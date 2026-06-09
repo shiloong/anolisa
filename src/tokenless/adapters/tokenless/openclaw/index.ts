@@ -64,6 +64,8 @@ let tokenlessPath: string = "tokenless";
 const LIBEXEC_FALLBACK = "/usr/libexec/anolisa/tokenless";
 const LIB_FALLBACK = "/usr/lib/anolisa/tokenless";
 const TOKENLESS_FALLBACK = "/usr/bin/tokenless";
+const HOMEBREW_LIBEXEC_FALLBACK = "/opt/homebrew/libexec/anolisa/tokenless";
+const HOMEBREW_BIN_FALLBACK = "/opt/homebrew/bin";
 const LOCAL_BIN = `${process.env.HOME || ""}/.local/bin`;
 const LOCAL_LIB = `${process.env.HOME || ""}/.local/lib/anolisa/tokenless`;
 const LOCAL_FALLBACK = `${process.env.HOME || ""}/.local/share/anolisa/tokenless`;
@@ -98,7 +100,7 @@ function checkRtk(): boolean {
     rtkAvailable = null;
   }
   if (rtkAvailable !== null) return rtkAvailable;
-  const resolved = resolveBinaryPath("rtk", `${LIBEXEC_FALLBACK}/rtk`, `${LIB_FALLBACK}/rtk`, `${LOCAL_FALLBACK}/rtk`, `${LOCAL_LIB}/rtk`, `${LOCAL_BIN}/rtk`);
+  const resolved = resolveBinaryPath("rtk", `${LIBEXEC_FALLBACK}/rtk`, `${LIB_FALLBACK}/rtk`, `${HOMEBREW_LIBEXEC_FALLBACK}/rtk`, `${HOMEBREW_BIN_FALLBACK}/rtk`, `${LOCAL_FALLBACK}/rtk`, `${LOCAL_LIB}/rtk`, `${LOCAL_BIN}/rtk`);
   if (resolved) { rtkPath = resolved; rtkAvailable = true; }
   else { rtkAvailable = false; }
   rtkCheckedAt = Date.now();
@@ -122,7 +124,7 @@ function checkTokenless(): boolean {
     tokenlessAvailable = null;
   }
   if (tokenlessAvailable !== null) return tokenlessAvailable;
-  const resolved = resolveBinaryPath("tokenless", TOKENLESS_FALLBACK, `${LOCAL_FALLBACK}/tokenless`, `${LOCAL_LIB}/tokenless`, `${LOCAL_BIN}/tokenless`);
+  const resolved = resolveBinaryPath("tokenless", TOKENLESS_FALLBACK, `${HOMEBREW_BIN_FALLBACK}/tokenless`, `${LOCAL_FALLBACK}/tokenless`, `${LOCAL_LIB}/tokenless`, `${LOCAL_BIN}/tokenless`);
   if (resolved) { tokenlessPath = resolved; tokenlessAvailable = true; }
   else { tokenlessAvailable = false; }
   tokenlessCheckedAt = Date.now();
@@ -235,6 +237,96 @@ function tryEnvCheck(toolName: string): { status: string; diagnostic: string } |
     return { status: postStatus, diagnostic };
   } catch {
     return null;
+  }
+}
+
+// ---- Unified tool categorization ---------------------------------------------
+// Load tool categories from tool_categories.json (single source of truth)
+// This ensures consistency with Python hooks and tool-ready-spec.json
+
+interface Thresholds {
+  truncate_strings_at: number;
+  truncate_arrays_at: number;
+  max_depth: number;
+}
+
+interface ToolCategories {
+  layer_1_skip: { tools: string[] };
+  layer_2_shell: { tools: string[]; thresholds?: Thresholds };
+  layer_3_api: { thresholds?: Thresholds };
+}
+
+// Hardcoded fallback tool sets — used only when tool_categories.json is missing
+// or invalid. Mirrors Python hook_utils._FALLBACK_SKIP_TOOLS/_FALLBACK_SHELL_TOOLS
+// to ensure consistent behavior across adapters even without the JSON file.
+const FALLBACK_SKIP_TOOLS: string[] = [
+  "Read", "read", "read_file", "read_many_files",
+  "Glob", "glob", "list_directory",
+  "Grep", "grep", "grep_search", "search_files",
+  "Lsp", "lsp",
+  "NotebookRead", "notebook_read", "notebookread",
+];
+const FALLBACK_SHELL_TOOLS: string[] = [
+  "Bash", "bash", "Shell", "shell", "exec", "terminal",
+  "run_shell_command", "execute_command", "process",
+];
+
+function loadToolCategories(): ToolCategories {
+  const fallback: ToolCategories = {
+    layer_1_skip: { tools: FALLBACK_SKIP_TOOLS },
+    layer_2_shell: { tools: FALLBACK_SHELL_TOOLS },
+    layer_3_api: {},
+  };
+
+  try {
+    // Try multiple possible locations for tool_categories.json
+    const possiblePaths = [
+      join(__dirname, "..", "..", "common", "hooks", "tool_categories.json"),
+      join(__dirname, "common", "hooks", "tool_categories.json"),
+      "/usr/share/anolisa/adapters/tokenless/common/hooks/tool_categories.json",
+      "/opt/homebrew/share/anolisa/adapters/tokenless/common/hooks/tool_categories.json",
+      "/usr/local/share/anolisa/adapters/tokenless/common/hooks/tool_categories.json",
+    ];
+
+    let content: string | null = null;
+    for (const path of possiblePaths) {
+      if (existsSync(path)) {
+        content = readFileSync(path, "utf-8");
+        break;
+      }
+    }
+
+    if (!content) {
+      console.warn("[tokenless] Could not find tool_categories.json, using hardcoded fallback categories");
+      return fallback;
+    }
+
+    const data = JSON.parse(content);
+
+    // Validate required structure
+    const requiredLayers = ["layer_1_skip", "layer_2_shell", "layer_3_api"];
+    for (const layer of requiredLayers) {
+      if (!(layer in data)) {
+        throw new Error(`Missing required layer: ${layer}`);
+      }
+      if (typeof data[layer] !== "object" || data[layer] === null) {
+        throw new Error(`Layer ${layer} must be an object`);
+      }
+    }
+    // layer_1 and layer_2 require a "tools" list; layer_3 is implicit
+    for (const layer of ["layer_1_skip", "layer_2_shell"]) {
+      if (!("tools" in data[layer])) {
+        throw new Error(`Layer ${layer} missing 'tools' field`);
+      }
+      if (!Array.isArray(data[layer].tools)) {
+        throw new Error(`Layer ${layer}.tools must be an array`);
+      }
+    }
+
+    return data as ToolCategories;
+  } catch (error) {
+    console.error("[tokenless] Failed to load tool_categories.json:", error);
+    return fallback;
   }
 }
 

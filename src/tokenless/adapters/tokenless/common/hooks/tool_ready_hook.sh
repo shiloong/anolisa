@@ -31,14 +31,14 @@ is_trusted_file() {
   local f="$1"
   [ -f "$f" ] || return 1
   # System paths are always trusted
-  case "$f" in /usr/share/*|/usr/libexec/*|/usr/lib/anolisa/*|/usr/local/share/*) return 0 ;; esac
+  case "$f" in /usr/share/*|/usr/libexec/*|/usr/lib/anolisa/*|/usr/local/share/*|/opt/homebrew/share/*|/opt/homebrew/libexec/*|/opt/homebrew/lib/anolisa/*) return 0 ;; esac
   # Resolve symlink target before owner/perm checks
   local check_path="$f"
   if [ -L "$f" ]; then
     local target
     target=$(readlink -f "$f" 2>/dev/null || realpath "$f" 2>/dev/null || echo "")
     # System targets are always trusted
-    case "$target" in /usr/share/*|/usr/libexec/*|/usr/lib/anolisa/*|/usr/local/share/*) return 0 ;; esac
+    case "$target" in /usr/share/*|/usr/libexec/*|/usr/lib/anolisa/*|/usr/local/share/*|/opt/homebrew/share/*|/opt/homebrew/libexec/*|/opt/homebrew/lib/anolisa/*) return 0 ;; esac
     [ -z "$target" ] && return 1
     check_path="$target"
   fi
@@ -65,8 +65,10 @@ SPEC_FILE=""
 for candidate in \
     "${TOKENLESS_TOOL_READY_SPEC:-}" \
     "${ANOLISA_ADAPTER_DIR:+$ANOLISA_ADAPTER_DIR/common/tool-ready-spec.json}" \
-    "$HOME/.local/share/anolisa/adapters/tokenless/common/tool-ready-spec.json" \
     "/usr/share/anolisa/adapters/tokenless/common/tool-ready-spec.json" \
+    "/opt/homebrew/share/anolisa/adapters/tokenless/common/tool-ready-spec.json" \
+    "/usr/local/share/anolisa/adapters/tokenless/common/tool-ready-spec.json" \
+    "$HOME/.local/share/anolisa/adapters/tokenless/common/tool-ready-spec.json" \
     "$HOME/.tokenless/tool-ready-spec.json" \
     "${SCRIPT_DIR}/../tool-ready-spec.json"; do
     if [ -n "$candidate" ] && is_trusted_file "$candidate"; then
@@ -79,8 +81,10 @@ FIX_SCRIPT=""
 for candidate in \
     "${TOKENLESS_ENV_FIX_SCRIPT:-}" \
     "${ANOLISA_ADAPTER_DIR:+$ANOLISA_ADAPTER_DIR/common/tokenless-env-fix.sh}" \
-    "$HOME/.local/share/anolisa/adapters/tokenless/common/tokenless-env-fix.sh" \
     "/usr/share/anolisa/adapters/tokenless/common/tokenless-env-fix.sh" \
+    "/opt/homebrew/share/anolisa/adapters/tokenless/common/tokenless-env-fix.sh" \
+    "/usr/local/share/anolisa/adapters/tokenless/common/tokenless-env-fix.sh" \
+    "$HOME/.local/share/anolisa/adapters/tokenless/common/tokenless-env-fix.sh" \
     "$HOME/.tokenless/tokenless-env-fix.sh" \
     "${SCRIPT_DIR}/../tokenless-env-fix.sh"; do
     if [ -n "$candidate" ] && [ -x "$candidate" ] && is_trusted_file "$candidate"; then

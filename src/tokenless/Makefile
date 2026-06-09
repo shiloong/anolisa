@@ -43,7 +43,8 @@ VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1
         claude-code-install claude-code-uninstall \
         codex-install codex-uninstall \
         setup help \
-        test-hooks
+        test-hooks \
+        dist-brew
 
 # Default target
 all: build
@@ -190,6 +191,54 @@ dist: clean
 	    -C .. tokenless
 	@echo "==> Tarball: ../tokenless-$(VERSION).tar.gz"
 
+# Create source tarball for Homebrew and update Formula/tokenless.rb with sha256 + URL.
+# Default: local file:// URL (for local dev testing).
+# Release: set TOKENLESS_RELEASE_URL to the GitHub Release tarball URL.
+#   TOKENLESS_RELEASE_URL=https://github.com/alibaba/anolisa/releases/download/tokenless/v$(VERSION)/tokenless-$(VERSION).tar.gz make dist-brew
+# Inlines the rtk setup logic from justfile to avoid requiring `just` on macOS.
+RTK_TAG := v0.36.0
+RTK_DIR := third_party/rtk
+PATCH_DIR := third_party/patches
+
+dist-brew: clean
+	@echo "==> Creating Homebrew source tarball..."
+	@if [ ! -f $(RTK_DIR)/Cargo.toml ]; then \
+	    echo "Cloning rtk $(RTK_TAG) from GitHub..."; \
+	    git clone --depth 1 --branch $(RTK_TAG) \
+	        https://github.com/rtk-ai/rtk.git $(RTK_DIR); \
+	    echo "Applying tokenless stats patch..."; \
+	    patch --forward -p1 --no-backup-if-mismatch \
+	        -d $(RTK_DIR) < $(PATCH_DIR)/rtk-tokenless-stats.patch; \
+	    echo "rtk setup complete."; \
+	else \
+	    echo "rtk already set up ($(RTK_DIR)/Cargo.toml exists)."; \
+	fi
+	tar czf ../tokenless-$(VERSION).tar.gz \
+	    --exclude='target' \
+	    --exclude='.git' \
+	    --exclude='__pycache__' \
+	    --exclude='node_modules' \
+	    -C .. tokenless
+	@TARBALL="$$(cd .. && pwd)/tokenless-$(VERSION).tar.gz"; \
+	SHA=$$(shasum -a 256 "$$TARBALL" | cut -d' ' -f1); \
+	if [ -n "$(TOKENLESS_RELEASE_URL)" ]; then \
+	    URL="$(TOKENLESS_RELEASE_URL)"; \
+	else \
+	    URL="file://$$TARBALL"; \
+	fi; \
+	echo "==> Tarball: $$TARBALL"; \
+	echo "==> SHA256:  $$SHA"; \
+	echo "==> URL:     $$URL"; \
+	sed -i '' \
+	    -e 's|url ".*"|url "'"$$URL"'"|' \
+	    -e 's|sha256 ".*"|sha256 "'"$$SHA"'"|' \
+	    -e 's|version ".*"|version "$(VERSION)"|' \
+	    Formula/tokenless.rb; \
+	echo "==> Formula/tokenless.rb updated (url + sha256 + version)"
+	@echo ""
+	@echo "Install with:"
+	@echo "  brew install --formula Formula/tokenless.rb"
+
 # Adapter management — invokes detect/install/uninstall action scripts per the
 # ANOLISA FHS adapter spec.  Environment variables point to installed FHS paths.
 ADAPTER_ENV = ANOLISA_PREFIX=$(HOME)/.local \
@@ -326,6 +375,7 @@ help:
 	@echo "  lint              Run clippy checks"
 	@echo "  fmt               Format code"
 	@echo "  clean             Clean build artifacts"
+	@echo "  dist-brew         Create Homebrew source tarball + update formula"
 	@echo "  adapter-scan      List registered adapter capabilities"
 	@echo "  adapter-install   Register all adapters (cosh+openclaw+hermes+qoder+claude-code+codex)"
 	@echo "  adapter-uninstall Unregister all adapters"

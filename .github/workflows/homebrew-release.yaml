@@ -105,7 +105,9 @@ jobs:
 
           echo "Release created: $TAG"
 
-      # ---- Update Homebrew tap Formula ----
+      # ---- Update Homebrew tap Formula via GitHub API ----
+      # Uses the Contents API (no git clone needed, avoids PAT auth issues
+      # with git credential helpers).
       - name: Update Homebrew tap
         env:
           GH_TOKEN: ${{ secrets.TAP_REPO_TOKEN }}
@@ -114,30 +116,33 @@ jobs:
           SHA="${{ steps.tarball.outputs.sha256 }}"
           TAG="${{ steps.parse.outputs.tag }}"
           URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${{ steps.parse.outputs.tarball }}"
+          TAP_REPO="shiloong/homebrew-tap"
 
           echo "URL: $URL"
           echo "SHA: $SHA"
 
-          # Clone the tap repo
-          git clone https://x-access-token:${GH_TOKEN}@github.com/shiloong/homebrew-tap.git tap-repo
-          cd tap-repo
+          # Get current file content and SHA from GitHub API
+          CURRENT=$(gh api "repos/${TAP_REPO}/contents/Formula/tokenless.rb" --jq '.content' | base64 -d)
+          FILE_SHA=$(gh api "repos/${TAP_REPO}/contents/Formula/tokenless.rb" --jq '.sha')
 
-          # Update Formula with portable sed (works on both macOS and Linux)
-          sed \
+          # Apply sed replacements
+          UPDATED=$(echo "$CURRENT" | sed \
             -e 's|url ".*"|url "'"$URL"'"|' \
             -e 's|sha256 ".*"|sha256 "'"$SHA"'"|' \
-            -e 's|version ".*"|version "'"$VERSION"'"|' \
-            Formula/tokenless.rb > Formula/tokenless.rb.tmp
-          mv Formula/tokenless.rb.tmp Formula/tokenless.rb
+            -e 's|version ".*"|version "'"$VERSION"'"|')
 
-          # Show what changed
-          git diff Formula/tokenless.rb
+          # Show diff
+          diff <(echo "$CURRENT") <(echo "$UPDATED") || true
 
-          # Commit and push
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/tokenless.rb
-          git commit -m "tokenless: bump to v${VERSION}"
-          git push origin main
+          # Encode updated content to base64 (no line wrapping)
+          CONTENT_B64=$(echo "$UPDATED" | base64 -w 0 2>/dev/null || echo "$UPDATED" | base64 | tr -d '\n')
 
-          echo "Tap Formula updated and pushed."
+          # Update file via GitHub API
+          gh api "repos/${TAP_REPO}/contents/Formula/tokenless.rb" \
+            --method PUT \
+            -f message="tokenless: bump to v${VERSION}" \
+            -f content="$CONTENT_B64" \
+            -f sha="$FILE_SHA" \
+            --jq '.commit.html_url'
+
+          echo "Tap Formula updated."

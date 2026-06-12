@@ -229,11 +229,11 @@ dist-brew: clean
 	echo "==> Tarball: $$TARBALL"; \
 	echo "==> SHA256:  $$SHA"; \
 	echo "==> URL:     $$URL"; \
-	sed -i '' \
-	    -e 's|url ".*"|url "'"$$URL"'"|' \
+	sed -e 's|url ".*"|url "'"$$URL"'"|' \
 	    -e 's|sha256 ".*"|sha256 "'"$$SHA"'"|' \
 	    -e 's|version ".*"|version "$(VERSION)"|' \
-	    Formula/tokenless.rb; \
+	    Formula/tokenless.rb > Formula/tokenless.rb.tmp && \
+	mv Formula/tokenless.rb.tmp Formula/tokenless.rb; \
 	echo "==> Formula/tokenless.rb updated (url + sha256 + version)"
 	@echo ""
 	@echo "Install with:"

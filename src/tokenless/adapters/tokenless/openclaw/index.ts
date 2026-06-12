@@ -21,7 +21,8 @@
  */
 
 import { execSync, execFileSync, spawnSync } from "child_process";
-import { existsSync, statSync } from "fs";
+import { existsSync, statSync, readFileSync } from "fs";
+import { join } from "path";
 
 // ---- Session ID mapping --------------------------------------------------------
 // OpenClaw's tool_result_persist ctx provides sessionKey ("agent:main:main")
